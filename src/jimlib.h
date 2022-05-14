@@ -693,8 +693,20 @@ inline std::vector<DsTempData> readTemps(OneWireNg *ow) {
     return rval;
 }
 
+String basename(const char *fn) {
+	String rval(fn); 
+	char *p = strrchr(fn, '/');
+	if (p != NULL) 
+		rval = p + 1;
+	if (rval.indexOf('.')) {
+		rval = rval.substring(0, rval.indexOf('.'));
+	}
+	return rval;
+}
 
 #ifdef ESP32
+
+#if 0 
 const char* host = "esp32";
 const char* ssid = "xxx";
 const char* password = "xxxx";
@@ -786,6 +798,7 @@ const char* serverIndex =
  "});"
  "});"
  "</script>";
+#endif
 
 class JimWiFi { 
 	EggTimer report = EggTimer(1000);
@@ -834,6 +847,7 @@ class JimWiFi {
 	}
 public:
     bool updateInProgress = false;
+	bool debug = false;
 	WiFiUDP udp;
 	WiFiMulti wifi;
 	void onConnect(std::function<void(void)> oc) { 
@@ -850,6 +864,7 @@ public:
 		if (WiFi.status() == WL_CONNECTED) { 
 			if (firstConnect ==  true) { 
 				firstConnect = false;
+#if  0
 			  server.on("/", HTTP_GET, []() {
 				server.sendHeader("Connection", "close");
 				server.send(200, "text/html", loginIndex);
@@ -892,7 +907,7 @@ public:
 				}
 			  });
 			  server.begin();
-
+#endif
 
 			ArduinoOTA.onStart([this]() {
 				String type;
@@ -945,10 +960,9 @@ public:
 		
 				
 			do {
- 
 				ArduinoOTA.handle();
 			} while(updateInProgress == true);
-			server.handleClient();
+//			server.handleClient();
 			if (report.tick()) {
 				udpDebug(""); 
 			}
@@ -956,7 +970,7 @@ public:
 	}
 	bool connected() { return WiFi.status() == WL_CONNECTED;  }  
 	void udpDebug(const char *s) { 
-		if (!connected())
+		if (!connected() || !debug)
 			return;
 		udp.beginPacket("255.255.255.255", 9000);
 		char b[128];
@@ -1216,7 +1230,6 @@ public:
 		if (client.connect(topicPrefix.c_str())) {
 			client.subscribe((topicPrefix + "/in").c_str());
 			client.setCallback([this](char* topic, byte* p, unsigned int l) {
-				Serial.println("MQTT incoming");
 				this->callBack(topic, p, l);
 			});
 			Serial.println("connected");

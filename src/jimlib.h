@@ -1187,13 +1187,17 @@ class MQTTClient {
 	WiFiClient espClient;
 	String topicPrefix, server;
 	void callBack(char *topic, byte *p, unsigned int l) {
-		String payload = buf2str(p, l);		
+		if (userCallback != NULL) { 
+			userCallback(String(topic), buf2str(p, l));
+		}		
 	}
+	std::function<void(String,String)> userCallback = NULL;
 public:
 	bool active;
 	PubSubClient client;
-	MQTTClient(const char *s, const char *t, bool a = true) : 
-		active(a), server(s), topicPrefix(t), client(espClient) {
+	void setCallback(std::function<void(String,String)> cb) { userCallback = cb; }
+	MQTTClient(const char *s, const char *t, std::function<void(String,String)> cb = NULL, bool a = true) : 
+		active(a), server(s), topicPrefix(t), client(espClient), userCallback(cb) {
 	}
 	void publish(const char *suffix, const char *m) { 
 		String t = topicPrefix + "/" + suffix;
@@ -1208,11 +1212,15 @@ public:
 		if (active == false || WiFi.status() != WL_CONNECTED || client.connected()) 
 			return;
 		client.setServer(server.c_str(), 1883);
+		Serial.println("MQTT connecting...");
 		if (client.connect(topicPrefix.c_str())) {
 			client.subscribe((topicPrefix + "/in").c_str());
 			client.setCallback([this](char* topic, byte* p, unsigned int l) {
+				Serial.println("MQTT incoming");
 				this->callBack(topic, p, l);
 			});
+			Serial.println("connected");
+
 		} else {
 			Serial.print("failed, rc=");
 			Serial.print(client.state());

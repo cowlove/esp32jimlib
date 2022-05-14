@@ -17,6 +17,11 @@
 #include "WiFiUdp.h"
 #include "Wire.h"
 #include <OneWireNg.h>
+#include <Update.h>			
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <PubSubClient.h>
+
 #ifdef ESP32
 #include <esp_task_wdt.h>
 #include <WiFiMulti.h>
@@ -143,7 +148,7 @@ class LineBuffer {
 public:
 	char line[1024];
 	char len = 0;
-	int add(char c) {
+	int add(char c, std::function<void(const char *)> f = NULL) {
 		int r = 0;
 		if (c != '\r' && c != '\n')
 			line[len++] = c; 
@@ -151,13 +156,15 @@ public:
 			r = len;
 			line[len] = 0;
 			len = 0;
+			if (f != NULL) { 
+				f(line);
+			}
 		}
 		return r;
 	}
 	void add(const char *b, int n, std::function<void(const char *)> f) { 
 		for (int i = 0; i < n; i++) {
-			if (add(b[i])) 
-				f(line);
+			add(b[i], f); 
 		}
 	}
 	void add(const uint8_t *b, int n, std::function<void(const char *)> f) { add((const char *)b, n, f); } 
@@ -632,8 +639,9 @@ inline std::vector<DsTempData> readTemps(OneWireNg *ow) {
     do
     {
         ec = ow->search(id);
-        if (!(ec == OneWireNg::EC_MORE || ec == OneWireNg::EC_NO_DEVS))
-            break;
+		//Serial.printf("ec: %d\n", ec);
+        //if (!(ec == OneWireNg::EC_MORE || ec == OneWireNg::EC_NO_DEVS))
+        //    break;
 
         /* start temperature conversion */
         ow->addressSingle(id);
@@ -652,7 +660,7 @@ inline std::vector<DsTempData> readTemps(OneWireNg *ow) {
         uint8_t *scrpd = &touchScrpd[1];  /* scratchpad data */
 
         if (OneWireNg::crc8(scrpd, 8) != scrpd[8]) {
-            //Serial.println("  Invalid CRC!");
+            Serial.println("  Invalid CRC!");
             continue;
         }
 
@@ -779,15 +787,53 @@ const char* serverIndex =
  "});"
  "</script>";
 
-
-
 class JimWiFi { 
 	EggTimer report = EggTimer(1000);
 	bool firstRun = true, firstConnect = true;
 	std::function<void(void)> connectFunc = NULL;
 	std::function<void(void)> otaFunc = NULL;
-	bool updateInProgress = false;
+	// TODO: move this into JimWifi 
+	void autoConnect() { 
+		const struct {
+			const char *name;
+			const char *pass;
+		} aps[] = {	{"MOF-Guest", ""}, 
+					{"ChloeNet", "niftyprairie7"},
+					{"Team America", "51a52b5354"},  
+					{"TUK-FIRE", "FD priv n3t 20 q4"}};
+		WiFi.disconnect(true);
+		WiFi.mode(WIFI_STA);
+		WiFi.setSleep(false);
+
+		int bestMatch = -1;
+
+		int n = WiFi.scanNetworks();
+		Serial.println("scan done");
+		
+		if (n == 0) {
+			Serial.println("no networks found");
+		} else {
+			Serial.printf("%d networks found\n", n);
+			for (int i = 0; i < n; ++i) {
+			// Print SSID and RSSI for each network found
+				Serial.printf("%3d: %s (%d)\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI());
+				for (int j = 0; j < sizeof(aps)/sizeof(aps[0]); j++) { 				
+					if (strcmp(WiFi.SSID(i).c_str(), aps[j].name) == 0) { 
+						if (bestMatch == -1 || j < bestMatch) {
+							bestMatch = j;
+						}
+					}
+				}	
+			}
+		}
+		if (bestMatch == -1) {
+			bestMatch = 0;
+		}
+		Serial.printf("Using WiFi AP '%s'...\n", aps[bestMatch].name);
+		WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+	}
 public:
+    bool updateInProgress = false;
 	WiFiUDP udp;
 	WiFiMulti wifi;
 	void onConnect(std::function<void(void)> oc) { 
@@ -798,15 +844,9 @@ public:
 	}
 	void run() { 
 		if (firstRun) {
-			WiFi.disconnect(true);
-			WiFi.mode(WIFI_STA);
-			WiFi.setSleep(false);
-
-			wifi.addAP("ChloeNet", "niftyprairie7");
-			//wifi.addAP("TUK-FIRE", "FD priv n3t 20 q4");
+			autoConnect();			
 			firstRun = false;
 		}
-		wifi.run();
 		if (WiFi.status() == WL_CONNECTED) { 
 			if (firstConnect ==  true) { 
 				firstConnect = false;
@@ -902,8 +942,10 @@ public:
 					connectFunc();
 				}
 			}
-			
-			do { 
+		
+				
+			do {
+ 
 				ArduinoOTA.handle();
 			} while(updateInProgress == true);
 			server.handleClient();
@@ -1032,9 +1074,182 @@ float random01() { 	return rand() / (RAND_MAX + 1.0); }
 #define ARRAY_SIZE(array) (sizeof(array)/sizeof(array[0]))
 
 #ifdef GIT_VERSION
-char _GIT_VERSION[] = "GIT_VERSION " GIT_VERSION;
-
+char _GIT_VERSION[] = GIT_VERSION;
+#else
+char _GIT_VERSION[] = "undefined";
 #endif
+
+static inline float avgAnalogRead(int pin, int avg = 1024) { 
+	float bv = 0;
+	for (int i = 0; i < avg; i++) {
+		bv += analogRead(pin);
+	}
+	return bv / avg;
+}
+
+static inline int hex2bin(const char *in, char *out, int l) { 
+        for (const char *p = in; p < in + l ; p += 2) { 
+                char b[3];
+                b[0] = p[0];
+                b[1] = p[1];
+                b[2] = 0;
+                int c;
+                sscanf(b, "%x", &c);
+                *(out++) = c;
+        }
+        return l / 2;
+}
+
+void dbg(const char *format, ...) { 
+	va_list args;
+	va_start(args, format);
+	char buf[256];
+	vsnprintf(buf, sizeof(buf), format, args);
+	va_end(args);
+	//mqtt.publish("debug", buf);
+	Serial.println(buf);
+}
+
+static void webUpgrade(const char *u) {
+	WiFiClientSecure wc;
+	wc.setInsecure();
+	HTTPClient client; 
+
+	int offset = 0;
+	int len = 1024 * 16;
+	int errors = 0;
+ 
+	Update.begin(UPDATE_SIZE_UNKNOWN);
+	Serial.println("Updating firmware...");
+
+	while(true) { 
+		esp_task_wdt_reset();
+		String url = String(u) + Sfmt("?len=%d&offset=%d", len, offset);
+		dbg("offset %d, len %d, url %s", offset, len, url.c_str());
+		client.begin(wc, url);
+		int resp = client.GET();
+		//dbg("HTTPClient.get() returned %d\n", resp);
+		if(resp != 200) {
+			dbg("Get failed\n");
+			Serial.print(client.getString());
+			delay(5000);
+			if (++errors > 10) { 
+				return;
+			}
+			continue;
+		}
+		int currentLength = 0;
+		int	totalLength = client.getSize();
+		int len = totalLength;
+		uint8_t bbuf[128], tbuf[256];
+	
+		//Serial.printf("FW Size: %u\n",totalLength);
+		if (totalLength == 0) { 
+			Serial.printf("\nUpdate Success, Total Size: %u\nRebooting...\n", currentLength);
+			Update.end(true);
+			ESP.restart();
+			return;				
+		}
+				
+		WiFiClient * stream = client.getStreamPtr();
+		while(client.connected() && len > 0) {
+			size_t avail = stream->available();
+			if(avail) {
+				int c = stream->readBytes(tbuf, ((avail > sizeof(tbuf)) ? sizeof(tbuf) : avail));
+				if (c > 0) {
+					hex2bin((const char *)tbuf, (char *)bbuf, c);
+					//dbg("Update with %d", c / 2);
+					Update.write(bbuf, c / 2);
+					if(len > 0) {
+						len -= c;
+					}
+				}
+			}
+			delay(1);
+		}	
+		client.end();
+		offset += totalLength / 2;
+	}
+}
+
+// create a String from a char buf without NULL termination 
+String buf2str(const byte *buf, int len) { 
+  String s;
+  for (int i = 0; i < len; i++) {
+	s += (char)buf[i];
+  }
+  return s;
+}
+
+// connects to an mqtt server, publish stuff on <name>, subscribe to <name>/in
+
+class MQTTClient { 
+	WiFiClient espClient;
+	String topicPrefix, server;
+	void callBack(char *topic, byte *p, unsigned int l) {
+		String payload = buf2str(p, l);		
+	}
+public:
+	bool active;
+	PubSubClient client;
+	MQTTClient(const char *s, const char *t, bool a = true) : 
+		active(a), server(s), topicPrefix(t), client(espClient) {
+	}
+	void publish(const char *suffix, const char *m) { 
+		String t = topicPrefix + "/" + suffix;
+		client.publish(t.c_str(), m);
+	}
+	void publish(const char *suffix, const String &m) {
+		 publish(suffix, m.c_str()); 
+	}
+	void pub(const char *m) { publish("out", m); } 
+	void reconnect() {
+	// Loop until we're reconnected
+		if (active == false || WiFi.status() != WL_CONNECTED || client.connected()) 
+			return;
+		client.setServer(server.c_str(), 1883);
+		if (client.connect(topicPrefix.c_str())) {
+			client.subscribe((topicPrefix + "/in").c_str());
+			client.setCallback([this](char* topic, byte* p, unsigned int l) {
+				this->callBack(topic, p, l);
+			});
+		} else {
+			Serial.print("failed, rc=");
+			Serial.print(client.state());
+		}
+	}
+	void dprintf(const char *format, ...) { 
+		va_list args;
+		va_start(args, format);
+        char buf[256];
+        vsnprintf(buf, sizeof(buf), format, args);
+	    va_end(args);
+		client.publish((topicPrefix + "/debug").c_str(), buf);
+	}
+	void run() { 
+		if (active) { 
+			client.loop();
+			reconnect();
+		}
+	}
+};
+
+String getMacAddress() {
+	uint8_t baseMac[6];
+	// Get MAC address for WiFi station
+	esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
+	char baseMacChr[18] = {0};
+	sprintf(baseMacChr, "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
+	return String(baseMacChr);
+}
+
+int getLedPin() { 
+	const String mac = getMacAddress(); 
+	if (mac == PROGMEM "9C9C1FC9BE94") return 2;
+	if (mac == PROGMEM "9C9C1FCB0920") return 2;
+	Serial.printf("MAC %s not found in getLedPin, defaulting to pin 2\n", mac.c_str());
+	return 2;
+}
 
 //#endif
 #endif //#ifndef INC_JIMLIB_H

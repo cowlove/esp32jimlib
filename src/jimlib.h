@@ -1315,6 +1315,10 @@ int getLedPin() {
 #ifdef ESP32 // TODO - this could move back to supporting ESP8266
 using namespace std;
 
+// TODO: replace "get xxx" hook with making = and white space optional in 
+// "set xxx" hook, just use "set xxx" to show command
+// TODO: use case insensitive regex matches
+
 class CommandLineInterface { 
 	typedef std::function<string(const char *,std::smatch)> callback;
 	std::vector<std::pair<std::string, callback>> handlers;
@@ -1365,7 +1369,7 @@ public:
 
 	template<typename T>
 	void hookVar(const char *l, T*p) {
-		std::string s = strfmt("set %s=(.*)", l);
+		std::string s = strfmt("set %s=(.*)", l); // TODO make = optional 
 		hookRaw(s.c_str(), p);
 		s = strfmt("get %s", l);
 		hookRaw(s.c_str(), p);	

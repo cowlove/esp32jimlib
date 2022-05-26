@@ -829,14 +829,13 @@ const char* serverIndex =
 int spiffsInit = 0;
 
 template<class T> 
-class SPIFFSVariable { 
+class SPIFFSVariableESP32 { 
 	String filename;
 	const T def;
 public:
-	SPIFFSVariable(const char *f, const T &d) : filename(f), def(d) {}
+	SPIFFSVariableESP32(const char *f, const T &d) : filename(f), def(d) {}
 	operator const T() {
 		T val = def;
-#ifdef ESP32
 		if (!spiffsInit) { 
 			SPIFFS.begin();
 		
@@ -853,11 +852,9 @@ public:
 				sscanf((char *)buf, "%d", &val);
 			}
 		}
-#endif
 		return val;
 	} 
-	SPIFFSVariable & operator=(const T&v) { 
-#ifdef ESP32
+	SPIFFSVariableESP32 & operator=(const T&v) { 
 		if (!spiffsInit) { 
 			SPIFFS.begin();
 			spiffsInit = 1;
@@ -871,10 +868,23 @@ public:
 			//Serial.printf("error writing file %s\n", filename.c_str());
 			SPIFFS.format();
 		}
-#endif
 		return *this;
 	}
 };
+
+template<class T> 
+struct SPIFFSVariableFake { 
+	const T def;
+	SPIFFSVariableFake(const char *f, const T &d) : def(d) {}
+	operator const T() { return def; } 
+	SPIFFSVariableFake & operator=(const T&v) { return *this; }
+};
+
+#ifdef ESP32
+#define SPIFFSVariable SPIFFSVariableESP32
+#else
+#define SPIFFSVariable SPIFFSVariableFake
+#endif
 
 class JimWiFi { 
 	EggTimer report = EggTimer(1000);
@@ -1415,12 +1425,12 @@ using namespace std;
 // "set xxx" hook, just use "set xxx" to show command
 // TODO: use case insensitive regex matches
 
-class CommandLineInterface { 
+class CommandLineInterfaceESP32 { 
 	typedef std::function<string(const char *,std::smatch)> callback;
 	std::vector<std::pair<std::string, callback>> handlers;
 public:
 
-	CommandLineInterface() { 
+	CommandLineInterfaceESP32() { 
 	}
 
 	void on(const char *pat, callback h) { 
@@ -1474,17 +1484,36 @@ public:
 	template<typename T> const char *formatOf();
 };
 
-template<> const char *CommandLineInterface::formatOf<float>() { return "%f"; }
-template<> const char *CommandLineInterface::formatOf<int>() { return "%i"; }
+template<> const char *CommandLineInterfaceESP32::formatOf<float>() { return "%f"; }
+template<> const char *CommandLineInterfaceESP32::formatOf<int>() { return "%i"; }
 
 template<>
-void CommandLineInterface::hookRaw<string>(const char *pat, string *v) {
+void CommandLineInterfaceESP32::hookRaw<string>(const char *pat, string *v) {
 	on(pat, [v](const char *, smatch m) { 
 		if (m.size() > 1)
 			*v = m.str(1).c_str();
 		return (*v).c_str();
 	});
 }
+
+struct CommandLineInterfaceESP8266 { 
+	typedef std::function<string(const char *,std::smatch)> callback;
+	void run();
+	void begin();
+	void on(const char *pat, callback h) {}
+	void on(const char *pat, std::function<void()> f) {}
+	void on(const char *pat, std::function<void(std::smatch)> f) {}
+	void on(const char *pat, std::function<void(const char *l)> f) {}
+	string process(const char *line) { return string(); }
+	template<typename T>
+	void hookVar(const char *l, T*p) {}
+};
+
+#ifdef ESP32
+typedef CommandLineInterfaceESP32 CommandLineInterface;
+#else
+typedef CommandLineInterfaceESP8266 CommandLineInterface;
+#endif
 
 class JStuff {		
 	bool parseSerial;

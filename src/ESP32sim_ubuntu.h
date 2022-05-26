@@ -229,6 +229,7 @@ class String {
 	} 
 	String(int s) : st(to_string(s)) {}
 	String() {}
+	String(int, int) {}
 	int length() const { return st.length(); } 
 	bool operator!=(const String& x) { return st != x.st; } 
 	String &operator+(const String& x) { st = st + x.st; return *this; } 
@@ -246,6 +247,8 @@ bool operator ==(const String &b, const char *a) { return String(a) == b; }
 
 class IPAddress {
 public:
+	IPAddress(int, int, int, int) {}
+	IPAddress() {}
 	void fromString(const char *) {}
 	String toString() const { return String("0.0.0.0"); }	
     int operator [](int) { return 0; }  
@@ -332,7 +335,7 @@ class HTTPClient {
 class PubSubClient {
 	public:
 	PubSubClient(WiFiClient &) {}
-	void publish(const char *, const char *)  {}
+	void publish(const char *, const char *, int p = 0)  {}
 	int connected() { return 0; }
 	int connect(const char *) { return 0; }
 	int subscribe(const char *) { return 0; }
@@ -397,6 +400,17 @@ public:
 	}
 	IPAddress remoteIP() { return IPAddress(); } 
 };
+
+struct PingerResponse {
+	int ReceivedResponse = 0;
+};
+typedef std::function<bool (const PingerResponse &)>PingerCallback;
+struct FakePinger { 
+  void OnReceive(PingerCallback) {}
+  void Ping(IPAddress, int, int) {}
+};
+
+typedef FakePinger Pinger;
 
 // TODO: extend this to use vector<unsigned char> to handle binary data	
 WiFiUDP::InputMap WiFiUDP::inputMap;

@@ -24,6 +24,7 @@
 #include <map>
 #include <algorithm>
 #include <functional>
+#include <regex>
 
 using namespace std;
 #ifndef GIT_VERSION
@@ -55,8 +56,6 @@ void esp_task_wdt_reset() {}
 esp_err_t esp_task_wdt_add(void *) { return 0; }
 esp_err_t esp_task_wdt_delete(const void *) { return 0; }
 int rtc_get_reset_reason(int) { return 0; } 
-
-
 
 namespace fs { 
 class File {
@@ -233,18 +232,22 @@ class String {
 	int length() const { return st.length(); } 
 	bool operator!=(const String& x) { return st != x.st; } 
 	String &operator+(const String& x) { st = st + x.st; return *this; } 
+	String &operator+(char x) { st = st + x; return *this; } 
+	String &operator+=(char x) { st = st + x; return *this; } 
 	const char *c_str(void) const { return st.c_str(); }
 	operator const char *() { return c_str(); } 
+	int indexOf(char c) { return st.find(c); } 
+	String substring(int a, int b) { return String(st.substr(a, b)); }  
 };
 
-String operator +(const char *a, String b) { 
-	return String(a) + b;
-}
+String operator +(const char *a, const String &b) { return String(a) + b; }
+bool operator ==(const char *a, const String &b) { return String(a) == b; }
+bool operator ==(const String &b, const char *a) { return String(a) == b; }
 
 class IPAddress {
 public:
 	void fromString(const char *) {}
-	String toString() const { return String(); }	
+	String toString() const { return String("0.0.0.0"); }	
     int operator [](int) { return 0; }  
 };
 
@@ -276,12 +279,16 @@ class FakeSerial {
 	} 
 	int write(const uint8_t *, int) { return 0; }
 	int write(const char *) { return 0; }	
+	int read() { return 0; }
 } Serial, Serial1, Serial2;
 
 #define WL_CONNECTED 0
 #define WIFI_STA 0
 #define DEC 0
 #define HEX 0 
+
+void esp_read_mac(uint8_t *, int) {}
+#define ESP_MAC_WIFI_STA 0
 
 class FakeWiFi {
 	public:
@@ -291,9 +298,50 @@ class FakeWiFi {
 	void setSleep(bool) {}
 	void mode(int) {}
 	void disconnect(bool) {}
+	String SSID(int i = 0) { return String(); }
 	int waitForConnectResult() { return 0; }
+	int scanNetworks() { return 0; }
+	String RSSI(int i = 0) { return String(); }
+	void disconnect() {}
+	void reconnect() {}
 } WiFi;
 
+class WiFiClientSecure {
+	public:
+	void setInsecure() {}
+};
+
+class WiFiClient { 
+	public:
+	int available() { return 0; }
+	int readBytes(uint8_t *, int) { return 0; }
+};
+
+class HTTPClient { 
+	public:
+	void begin(WiFiClientSecure, const char *) {}
+	String getString() { return String(); }
+	int GET() { return 0; }
+	int getSize() { return 0; }
+	WiFiClient *getStreamPtr() { return 0; } 
+	bool connected() { return 0; } 
+	void end() {}
+};
+
+#define PROGMEM 
+class PubSubClient {
+	public:
+	PubSubClient(WiFiClient &) {}
+	void publish(const char *, const char *)  {}
+	int connected() { return 0; }
+	int connect(const char *) { return 0; }
+	int subscribe(const char *) { return 0; }
+	void setServer(const char *, int) {}
+	String state() { return String(); }
+	void loop() {}
+	int setCallback(std::function<void(char *, byte *p, unsigned int)>) { return 0; } 
+
+};
 class FakeSD {
 	public:
 	bool begin(int, int, int, int) { return true; }
@@ -450,7 +498,7 @@ typedef MPU9250_DMP MPU9250_asukiaaa;
 
 struct {
 	int hasError() { return 0; } 
-	int write(const char *, int) { return 0; }
+	int write(const uint8_t *, int) { return 0; }
 	int begin(int) { return 0; } 
 	void printError(FakeSerial &) {}
 	int end(int) { return 0; }

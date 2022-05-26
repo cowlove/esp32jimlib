@@ -711,7 +711,7 @@ inline std::vector<DsTempData> readTemps(OneWireNg *ow) {
 
 String basename_strip_ext(const char *fn) {
 	String rval(fn); 
-	char *p = strrchr(fn, '/');
+	char *p = strrchr((char *)fn, '/');
 	if (p != NULL) 
 		rval = p + 1;
 	if (rval.indexOf('.')) {
@@ -883,7 +883,8 @@ class JimWiFi {
 	std::function<void(void)> otaFunc = NULL;
 	// TODO: move this into JimWifi
 	SPIFFSVariable<int> lastAP = SPIFFSVariable<int>("/lastap", -1);
-	void autoConnect() { 
+	void autoConnect() {
+		Serial.println("autoConnect()"); delay(1000); 
 		const struct {
 			const char *name;
 			const char *pass;
@@ -1532,6 +1533,7 @@ public:
 			string r = cli.process(m.c_str());
 			mqtt.pub(r.c_str());
 		});
+		delay(1000);
 	}
 	void out(const char *format, ...) { 
 		va_list args;

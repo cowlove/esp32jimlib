@@ -668,7 +668,7 @@ inline std::vector<DsTempData> readTemps(OneWireNg *ow) {
         uint8_t *scrpd = &touchScrpd[1];  /* scratchpad data */
 
         if (OneWireNg::crc8(scrpd, 8) != scrpd[8]) {
-            Serial.println("  Invalid CRC!");
+            //Serial.println("  Invalid CRC!");
             continue;
         }
 
@@ -1270,7 +1270,7 @@ public:
 			return;
 		client.setServer(server.c_str(), 1883);
 		Serial.println("MQTT connecting...");
-		if (client.connect(topicPrefix.c_str())) {
+		if (client.connect((topicPrefix + getMacAddress()).c_str())) {
 			client.subscribe((topicPrefix + "/in").c_str());
 			client.setCallback([this](char* topic, byte* p, unsigned int l) {
 				this->callBack(topic, p, l);

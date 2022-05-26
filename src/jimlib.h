@@ -21,20 +21,28 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 
-#ifdef ESP32
-#include <Update.h>			
-#include <HTTPClient.h>
-#include <esp_task_wdt.h>
-#include <WiFiMulti.h>
-#include <ESPmDNS.h>
-#include <SPIFFS.h>
-#include <Update.h>			
-#include <WebServer.h>
-#include <soc/soc.h>
-#include <soc/rtc_cntl_reg.h>
-#include <mySD.h> // Add "EXCLUDE_DIRS=esp32-micro-sdcard" to Makefile if this breaks ESP8266 builds
 #include <utility>
 #include <regex>
+
+#ifdef ESP32
+#include <soc/rtc_cntl_reg.h>
+#include <soc/soc.h>
+#include <Update.h>			
+#include <HTTPClient.h>
+#include <WiFiMulti.h>
+#include <ESPmDNS.h>
+#include <Update.h>			
+#include <WebServer.h>
+#include <mySD.h> // Add "EXCLUDE_DIRS=esp32-micro-sdcard" to Makefile if this breaks ESP8266 builds
+#include <SPIFFS.h>
+#include <esp_task_wdt.h>
+#else // ESP32
+static inline void esp_task_wdt_reset() {}
+static inline void esp_task_wdt_init(int, int) {}
+static inline void esp_task_wdt_add(void *) {}
+static inline void ledcSetup(int, int, int) {}
+static inline void ledcAttachPin(int, int) {}
+static inline void ledcWrite(int, int) {}
 #endif //ESP32
 #endif // !UBUNTU
 
@@ -723,7 +731,6 @@ String getMacAddress() {
 	return String(baseMacChr);
 }
 
-#ifdef ESP32
 
 #if 0 
 const char* host = "esp32";
@@ -828,11 +835,13 @@ class SPIFFSVariable {
 public:
 	SPIFFSVariable(const char *f, const T &d) : filename(f), def(d) {}
 	operator const T() {
+		T val = def;
+#ifdef ESP32
 		if (!spiffsInit) { 
 			SPIFFS.begin();
+		
 			spiffsInit = 1;
 		}
-		T val = def;
 		fs::File file = SPIFFS.open(filename.c_str(), "r");
 		if (file) { 
 			uint8_t buf[64];
@@ -844,9 +853,11 @@ public:
 				sscanf((char *)buf, "%d", &val);
 			}
 		}
+#endif
 		return val;
 	} 
 	SPIFFSVariable & operator=(const T&v) { 
+#ifdef ESP32
 		if (!spiffsInit) { 
 			SPIFFS.begin();
 			spiffsInit = 1;
@@ -860,17 +871,17 @@ public:
 			//Serial.printf("error writing file %s\n", filename.c_str());
 			SPIFFS.format();
 		}
+#endif
 		return *this;
 	}
 };
-
 
 class JimWiFi { 
 	EggTimer report = EggTimer(1000);
 	bool firstRun = true, firstConnect = true;
 	std::function<void(void)> connectFunc = NULL;
 	std::function<void(void)> otaFunc = NULL;
-	// TODO: move this into JimWifi 
+	// TODO: move this into JimWifi
 	SPIFFSVariable<int> lastAP = SPIFFSVariable<int>("/lastap", -1);
 	void autoConnect() { 
 		const struct {
@@ -937,7 +948,7 @@ public:
     bool updateInProgress = false;
 	bool debug = false;
 	WiFiUDP udp;
-	WiFiMulti wifi;
+	//WiFiMulti wifi;
 	EggTimer connCheck = EggTimer(30000);
 	void onConnect(std::function<void(void)> oc) { 
 		connectFunc = oc;
@@ -1013,7 +1024,9 @@ public:
 				} else { // U_FS
 				  type = "filesystem";
 				}
+				#ifdef ESP32
 				WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector   
+				#endif
 
 				// NOTE: if updating FS this would be the place to unmount FS using FS.end()
 				Serial.println("Start updating " + type);
@@ -1083,6 +1096,7 @@ public:
 #include <unistd.h>
 #endif
 
+#ifndef ESP32
 
 class ShortBootDebugMode {
 	SPIFFSVariable<int> shortBootCount = SPIFFSVariable<int>("/shortBootCount", 1);
@@ -1323,6 +1337,9 @@ public:
 	}
 };
 
+#ifndef ESP32
+#define PROGMEM
+#endif
 
 int getLedPin() { 
 	const String mac = getMacAddress(); 
@@ -1390,7 +1407,7 @@ public:
 #define PROGMEM
 #endif
 
-#ifdef ESP32 // TODO - this could move back to supporting ESP8266
+#if 1 // TODO - this could move back to supporting ESP8266
 using namespace std;
 
 // TODO: replace "get xxx" hook with making = and white space optional in 

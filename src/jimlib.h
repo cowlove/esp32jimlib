@@ -1375,7 +1375,7 @@ public:
 		}
 		for(auto i = handlers.begin(); i != handlers.end(); i++) { 
 			std::smatch res;
-			std::regex exp((i->first).c_str());
+			std::regex exp((i->first).c_str(), std::regex::icase);
 			std::string str = line;
 			if (std::regex_match(str, res, exp))  
 				rval += i->second(line, res);
@@ -1394,10 +1394,10 @@ public:
 
 	template<typename T>
 	void hookVar(const char *l, T*p) {
-		std::string s = strfmt("set %s=(.*)", l); // TODO make = optional 
+		std::string s = strfmt("set %s[= ](.*)", l); // TODO make = optional 
 		hookRaw(s.c_str(), p);
-		s = strfmt("get %s", l);
-		hookRaw(s.c_str(), p);	
+		//s = strfmt("get %s", l);
+		//hookRaw(s.c_str(), p);	
 	}
 
 	template<typename T> const char *formatOf();

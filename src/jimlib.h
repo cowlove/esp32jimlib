@@ -17,12 +17,12 @@
 #include "WiFiUdp.h"
 #include "Wire.h"
 #include <OneWireNg.h>
-#include <Update.h>			
 #include <WiFiClientSecure.h>
-#include <HTTPClient.h>
 #include <PubSubClient.h>
 
 #ifdef ESP32
+#include <Update.h>			
+#include <HTTPClient.h>
 #include <esp_task_wdt.h>
 #include <WiFiMulti.h>
 #include <ESPmDNS.h>
@@ -185,11 +185,15 @@ class EggTimer {
 	uint64_t last;
 	uint64_t interval; 
 	bool first = true;
+	bool immediate = false;
 public:
-	EggTimer(float ms) : interval(ms * 1000), last(0) { reset(); }
+	EggTimer(float ms, bool imm = false) : interval(ms * 1000), last(0) { 
+		reset(imm); 
+	}
 	bool tick() { 
 		uint64_t now = micros();
-		if (now - last >= interval) { 
+		if (now - last >= interval || immediate == true) {
+			immediate = false; 
 			last += interval;
 			// reset last to now if more than one full interval behind 
 			if (now - last >= interval) 
@@ -198,14 +202,15 @@ public:
 		} 
 		return false;
 	}
-	void reset() { 
+	void reset(bool imm = false) { 
 		last = micros();
+		immediate = imm;
 	}
 	void alarmNow() { 
-		last = 0;
+		reset(true);
 	}
 };
-
+typedef EggTimer Timer;
 
 class DigitalDebounce {
 	EggTimer timer;
@@ -693,7 +698,7 @@ inline std::vector<DsTempData> readTemps(OneWireNg *ow) {
     return rval;
 }
 
-String basename(const char *fn) {
+String basename_strip_ext(const char *fn) {
 	String rval(fn); 
 	char *p = strrchr(fn, '/');
 	if (p != NULL) 
@@ -702,6 +707,17 @@ String basename(const char *fn) {
 		rval = rval.substring(0, rval.indexOf('.'));
 	}
 	return rval;
+}
+
+String getMacAddress() {
+	uint8_t baseMac[6] = {0xff};
+#ifdef ESP32
+	// Get MAC address for WiFi station
+	esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
+#endif
+	char baseMacChr[18] = {0};
+	sprintf(baseMacChr, "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
+	return String(baseMacChr);
 }
 
 #ifdef ESP32
@@ -800,6 +816,7 @@ const char* serverIndex =
  "</script>";
 #endif
 
+
 class JimWiFi { 
 	EggTimer report = EggTimer(1000);
 	bool firstRun = true, firstConnect = true;
@@ -810,7 +827,8 @@ class JimWiFi {
 		const struct {
 			const char *name;
 			const char *pass;
-		} aps[] = {	{"MOF-Guest", ""}, 
+		} aps[] = {	{"MOF-Guest", ""},
+					{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
 					{"ChloeNet", "niftyprairie7"},
 					{"Team America", "51a52b5354"},  
 					{"TUK-FIRE", "FD priv n3t 20 q4"}};
@@ -829,7 +847,8 @@ class JimWiFi {
 			Serial.printf("%d networks found\n", n);
 			for (int i = 0; i < n; ++i) {
 			// Print SSID and RSSI for each network found
-				Serial.printf("%3d: %s (%d)\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI());
+			// TODO handle the trailing space in some AP names 
+				Serial.printf("%3d: %s (%d)\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
 				for (int j = 0; j < sizeof(aps)/sizeof(aps[0]); j++) { 				
 					if (strcmp(WiFi.SSID(i).c_str(), aps[j].name) == 0) { 
 						if (bestMatch == -1 || j < bestMatch) {
@@ -843,6 +862,10 @@ class JimWiFi {
 			bestMatch = 0;
 		}
 		Serial.printf("Using WiFi AP '%s'...\n", aps[bestMatch].name);
+		WiFi.disconnect(true);
+		WiFi.mode(WIFI_STA);
+		WiFi.setSleep(false);
+		delay(100);
 		WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
 	}
 public:
@@ -850,6 +873,7 @@ public:
 	bool debug = false;
 	WiFiUDP udp;
 	WiFiMulti wifi;
+	EggTimer connCheck = EggTimer(30000);
 	void onConnect(std::function<void(void)> oc) { 
 		connectFunc = oc;
 	}
@@ -859,6 +883,11 @@ public:
 	void run() { 
 		if (firstRun) {
 			autoConnect();			
+			firstRun = false;
+		}
+		if (connCheck.tick() && WiFi.status() != WL_CONNECTED) {
+			WiFi.disconnect();
+			WiFi.reconnect();
 			firstRun = false;
 		}
 		if (WiFi.status() == WL_CONNECTED) { 
@@ -974,8 +1003,9 @@ public:
 			return;
 		udp.beginPacket("255.255.255.255", 9000);
 		char b[128];
-		snprintf(b, sizeof(b), "%d %s    " __BASE_FILE__ "   " __DATE__ "   " __TIME__ "   0x%08x: ", 
-			(int)(millis() / 1000), WiFi.localIP().toString().c_str(), /*(int)ESP.getEfuseMac()*/0);
+		snprintf(b, sizeof(b), "%d %s %s " __DATE__ "   " __TIME__ "   %s ", 
+			(int)(millis() / 1000), WiFi.localIP().toString().c_str(), 
+			basename_strip_ext(__BASE_FILE__).c_str(), getMacAddress().c_str());
 		udp.write((const uint8_t *)b, strlen(b));
 		udp.write((const uint8_t *)s, strlen(s));
 		udp.write((const uint8_t *)"\n", 1);
@@ -1101,8 +1131,8 @@ static inline float avgAnalogRead(int pin, int avg = 1024) {
 	return bv / avg;
 }
 
-static inline int hex2bin(const char *in, char *out, int l) { 
-        for (const char *p = in; p < in + l ; p += 2) { 
+static inline int hex2bin(const char *in, char *out, int inLength) { 
+        for (const char *p = in; p < in + inLength ; p += 2) { 
                 char b[3];
                 b[0] = p[0];
                 b[1] = p[1];
@@ -1111,7 +1141,7 @@ static inline int hex2bin(const char *in, char *out, int l) {
                 sscanf(b, "%x", &c);
                 *(out++) = c;
         }
-        return l / 2;
+        return inLength / 2;
 }
 
 void dbg(const char *format, ...) { 
@@ -1124,6 +1154,7 @@ void dbg(const char *format, ...) {
 	Serial.println(buf);
 }
 
+#ifdef ESP32 // TODO we could do this on the 8266
 static void webUpgrade(const char *u) {
 	WiFiClientSecure wc;
 	wc.setInsecure();
@@ -1185,6 +1216,7 @@ static void webUpgrade(const char *u) {
 		offset += totalLength / 2;
 	}
 }
+#endif
 
 // create a String from a char buf without NULL termination 
 String buf2str(const byte *buf, int len) { 
@@ -1255,14 +1287,10 @@ public:
 	}
 };
 
-String getMacAddress() {
-	uint8_t baseMac[6];
-	// Get MAC address for WiFi station
-	esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
-	char baseMacChr[18] = {0};
-	sprintf(baseMacChr, "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
-	return String(baseMacChr);
-}
+
+#ifndef ESP32
+#define PROGMEM
+#endif
 
 int getLedPin() { 
 	const String mac = getMacAddress(); 

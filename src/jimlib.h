@@ -1454,6 +1454,7 @@ class CliVariable {
 };
 
 #define CLI_VARIABLE_INT(name,val) CliVariable<int> name(j.cli, #name, val)
+#define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name(j.cli, #name, val)
 #define OUT j.out
 #endif
 

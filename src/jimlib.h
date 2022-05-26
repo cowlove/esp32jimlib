@@ -1443,6 +1443,18 @@ public:
 	void out(std::string s) { out(s.c_str()); }
 };
 
+template<typename T> 
+class CliVariable {
+	T val;
+  public:
+	CliVariable(CommandLineInterface &c, const char *n) { c.hookVar(n, &val); }
+	CliVariable(CommandLineInterface &c, const char *n, T v) : val(v) { c.hookVar(n, &val); }
+	operator T&() { return val; }
+	T& operator =(T v) { val = v; return val; } 
+};
+
+#define CLI_VARIABLE_INT(name,val) CliVariable<int> name(j.cli, #name, val)
+#define OUT j.out
 #endif
 
 class TempSensor { 

@@ -1324,10 +1324,6 @@ public:
 };
 
 
-#ifndef ESP32
-#define PROGMEM
-#endif
-
 int getLedPin() { 
 	const String mac = getMacAddress(); 
 	if (mac == PROGMEM "9C9C1FC9BE94") return 2;
@@ -1336,6 +1332,63 @@ int getLedPin() {
 	return 2;
 }
 
+
+class PwmChannel {
+	int pin; 
+	int channel;
+	int pwm = -1;
+	int gradual;
+public:		
+	PwmChannel(int p, int hz = 50, int c = 0, int g = 0) : pin(p), channel(c), gradual(g) {
+		ledcSetup(channel, hz, 16);
+		ledcAttachPin(pin, channel);
+	}
+	void setMs(int p) { set(p * 4715 / 1500); };
+	void setPercent(int p) { set(p * 65535 / 100); } 
+	void set(int p) { 
+		while(gradual && pwm != -1 && pwm != p) { 
+			ledcWrite(channel, pwm);  
+			pwm += pwm < p ? 1 : -1;
+			delay(gradual);
+		}
+		ledcWrite(channel, p); 
+		pwm = p; 
+	} 
+	float get() { return (float)pwm / 65535; } 
+
+	int period = 0, pattern = 0, patternLen = 0;
+	float patternBrightness = 1.0;
+	void setPattern(int ms, int pat = 1, float bright = 1.0) { 				
+		period = ms;
+		pattern = pat;
+		patternLen = 0;
+		patternBrightness = bright;
+		while(pat) { 
+			patternLen++;
+			pat = pat >> 1;
+		}
+	}
+	void run() { 
+		if (period == 0 || pattern == 0)
+			return;
+		int pat = pattern;
+		int pi = (millis() % (period * patternLen)) / period;
+		for (int n = 0; n < min(16, pi); n++) { 
+			pat= pat >> 1;
+		}
+		if (pat & 0x1) { 
+			float v = abs((int)(millis() % period) - period/2.0) / (period / 2.0 / 100);
+			v = min(100.0, max(0.0, 100.0 - v * patternBrightness));
+			setPercent(v);
+		} else { 
+			set(0);
+		}
+	}
+};
+
+#ifndef ESP32
+#define PROGMEM
+#endif
 
 #ifdef ESP32 // TODO - this could move back to supporting ESP8266
 using namespace std;
@@ -1421,6 +1474,7 @@ class JStuff {
 	LineBuffer lb;
 	bool debug = false;
 public:
+	PwmChannel led = PwmChannel(getLedPin(), 1024, 10, 0);
 	CommandLineInterface cli;
 	JStuff(bool ps = true) : parseSerial(ps) {
 		cli.on("DEBUG", [this]() { debug = true;});
@@ -1431,6 +1485,7 @@ public:
 		esp_task_wdt_reset();
 		jw.run(); 
 		mqtt.run(); 
+		led.run();
 		while(parseSerial == true && Serial.available()) { 
 			lb.add(Serial.read(), [this](const char *l) {
 				string r = cli.process(l);
@@ -1446,7 +1501,9 @@ public:
 		Serial.println(__BASE_FILE__ " " GIT_VERSION);
 		getLedPin();
 
+		led.setPercent(30);
 		jw.onConnect([this](){
+			led.setPattern(500, 2);
 			jw.debug = mqtt.active = (WiFi.SSID() == "ChloeNet");
 			Serial.printf("Connected to AP '%s' in %dms, IP=%s\n",
 				WiFi.SSID(), millis(), WiFi.localIP().toString().c_str());
@@ -1500,30 +1557,6 @@ class TempSensor {
 			std::vector<DsTempData> t = readTemps(ow);
 			return t.size() > 0 ? t[0].degC : 0;
 	}
-};
-
-class PwmChannel {
-	int pin; 
-	int channel;
-	int pwm = -1;
-	int gradual;
-public:		
-	PwmChannel(int p, int hz = 50, int c = 0, int g = 0) : pin(p), channel(c), gradual(g) {
-		ledcSetup(channel, hz, 16);
-		ledcAttachPin(pin, channel);
-	}
-	void setMs(int p) { set(p * 4715 / 1500); };
-	void setPercent(int p) { set(p * 65535 / 100); } 
-	void set(int p) { 
-		while(gradual && pwm != -1 && pwm != p) { 
-			ledcWrite(channel, pwm);  
-			pwm += pwm < p ? 1 : -1;
-			delay(gradual);
-		}
-		ledcWrite(channel, p); 
-		pwm = p; 
-	} 
-	float get() { return (float)pwm / 65535; } 
 };
 
 void digitalToggle(int pin) { pinMode(pin, OUTPUT); digitalWrite(pin, !digitalRead(pin)); }

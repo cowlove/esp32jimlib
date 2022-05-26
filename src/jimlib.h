@@ -1496,6 +1496,7 @@ void CommandLineInterfaceESP32::hookRaw<string>(const char *pat, string *v) {
 	});
 }
 
+// TODO: need to reimplement this without std::regex so that ESP8266 can still fit in OTA
 struct CommandLineInterfaceESP8266 { 
 	typedef std::function<string(const char *,std::smatch)> callback;
 	void run();

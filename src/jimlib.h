@@ -872,6 +872,7 @@ public:
 	}
 };
 
+// TODO: I think there is a ESP8266 alternative to the SPIFFS.h, find it 
 template<class T> 
 struct SPIFFSVariableFake { 
 	const T def;

@@ -819,6 +819,51 @@ const char* serverIndex =
  "</script>";
 #endif
 
+int spiffsInit = 0;
+
+template<class T> 
+class SPIFFSVariable { 
+	String filename;
+	const T def;
+public:
+	SPIFFSVariable(const char *f, const T &d) : filename(f), def(d) {}
+	operator const T() {
+		if (!spiffsInit) { 
+			SPIFFS.begin();
+			spiffsInit = 1;
+		}
+		T val = def;
+		fs::File file = SPIFFS.open(filename.c_str(), "r");
+		if (file) { 
+			uint8_t buf[64];
+			int b = file.read(buf, sizeof(buf) - 1);
+			//Serial.printf("read %d bytes from %s\n", b, filename.c_str());
+			file.close();
+			if (b > 0) {
+				buf[b] = 0; 
+				sscanf((char *)buf, "%d", &val);
+			}
+		}
+		return val;
+	} 
+	SPIFFSVariable & operator=(const T&v) { 
+		if (!spiffsInit) { 
+			SPIFFS.begin();
+			spiffsInit = 1;
+		}	
+		fs::File file = SPIFFS.open(filename.c_str(), "w");
+		if (file) { 
+			file.printf("%d\n", v);
+			file.close();
+			//Serial.printf("Wrote file %s\n", filename.c_str());
+		} else { 
+			//Serial.printf("error writing file %s\n", filename.c_str());
+			SPIFFS.format();
+		}
+		return *this;
+	}
+};
+
 
 class JimWiFi { 
 	EggTimer report = EggTimer(1000);
@@ -826,6 +871,7 @@ class JimWiFi {
 	std::function<void(void)> connectFunc = NULL;
 	std::function<void(void)> otaFunc = NULL;
 	// TODO: move this into JimWifi 
+	SPIFFSVariable<int> lastAP = SPIFFSVariable<int>("/lastap", -1);
 	void autoConnect() { 
 		const struct {
 			const char *name;
@@ -835,12 +881,27 @@ class JimWiFi {
 					{"ChloeNet", "niftyprairie7"},
 					{"Team America", "51a52b5354"},  
 					{"TUK-FIRE", "FD priv n3t 20 q4"}};
+
 		WiFi.disconnect(true);
 		WiFi.mode(WIFI_STA);
 		WiFi.setSleep(false);
 
-		int bestMatch = -1;
+		int bestMatch = lastAP;
+		if (bestMatch >= 0 && bestMatch < (sizeof(aps)/sizeof(aps[0]))) { 
+			Serial.printf("Trying cached WiFi AP '%s'...\n", aps[bestMatch].name);
+			WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+			for(int d = 0; d < 80; d++) { 
+				if (WiFi.status() == WL_CONNECTED) 
+					return;
+				delay(100);
+			}
+		}
+		bestMatch = -1;
 
+		Serial.println("Scanning...");
+		WiFi.disconnect(true);
+		WiFi.mode(WIFI_STA);
+		WiFi.setSleep(false);
 		int n = WiFi.scanNetworks();
 		Serial.println("scan done");
 		
@@ -870,6 +931,7 @@ class JimWiFi {
 		WiFi.setSleep(false);
 		delay(100);
 		WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+		lastAP = bestMatch;
 	}
 public:
     bool updateInProgress = false;
@@ -1021,42 +1083,6 @@ public:
 #include <unistd.h>
 #endif
 
-#ifdef ESP32
-
-template<class T> 
-class SPIFFSVariable { 
-	String filename;
-	const T def;
-public:
-	SPIFFSVariable(const char *f, const T &d) : filename(f), def(d) {}
-	operator const T() {
-		T val = def;
-		fs::File file = SPIFFS.open(filename.c_str(), "r");
-		if (file) { 
-			uint8_t buf[64];
-			int b = file.read(buf, sizeof(buf) - 1);
-			Serial.printf("read %d bytes\n");
-			file.close();
-			if (b > 0) {
-				buf[b] = 0; 
-				sscanf((char *)buf, "%d", &val);
-			}
-		}
-		return val;
-	} 
-	SPIFFSVariable & operator=(const T&v) { 
-		fs::File file = SPIFFS.open(filename.c_str(), "w");
-		if (file) { 
-			file.printf("%d\n", v);
-			file.close();
-		} else { 
-			Serial.printf("error writing file %s\n", filename.c_str());
-			SPIFFS.format();
-		}
-		return *this;
-	}
-};
-#endif
 
 class ShortBootDebugMode {
 	SPIFFSVariable<int> shortBootCount = SPIFFSVariable<int>("/shortBootCount", 1);
@@ -1067,7 +1093,6 @@ class ShortBootDebugMode {
   public:
 	ShortBootDebugMode(int t) : threshold(t) {}
 	void begin() {
-		SPIFFS.begin();
 		shortBootCount = shortBootCount + 1;
 		sbCount = shortBootCount;
 		
@@ -1155,7 +1180,7 @@ static inline int hex2bin(const char *in, char *out, int inLength) {
         return inLength / 2;
 }
 
-void dbg(const char *format, ...) { 
+void dbg(const char *(format), ...) { 
 	va_list args;
 	va_start(args, format);
 	char buf[256];
@@ -1423,7 +1448,8 @@ public:
 
 		jw.onConnect([this](){
 			jw.debug = mqtt.active = (WiFi.SSID() == "ChloeNet");
-			Serial.printf("WiFi connected to %s\n", WiFi.SSID().c_str());
+			Serial.printf("Connected to AP '%s' in %dms, IP=%s\n",
+				WiFi.SSID(), millis(), WiFi.localIP().toString().c_str());
 			if (onConn != NULL) { 
 				onConn();
 			}

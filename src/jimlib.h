@@ -44,7 +44,9 @@ static inline void ledcSetup(int, int, int) {}
 static inline void ledcAttachPin(int, int) {}
 static inline void ledcWrite(int, int) {}
 #endif //ESP32
-#endif // !UBUNTU
+#else // !UBUNTU
+#include "ESP32sim_ubuntu.h"
+#endif
 
 #include <stdarg.h>
 #define DEG2RAD(x) ((x)*M_PI/180)
@@ -895,7 +897,6 @@ class JimWiFi {
 	// TODO: move this into JimWifi
 	SPIFFSVariable<int> lastAP = SPIFFSVariable<int>("/lastap", -1);
 	void autoConnect() {
-		Serial.println("autoConnect()"); delay(1000); 
 		const struct {
 			const char *name;
 			const char *pass;
@@ -1526,7 +1527,9 @@ public:
 	PwmChannel led = PwmChannel(getLedPin(), 1024, 10, 0);
 	CommandLineInterface cli;
 	JStuff(bool ps = true) : parseSerial(ps) {
-		cli.on("DEBUG", [this]() { debug = true;});
+		cli.on("DEBUG", [this]() { 
+			jw.debug = debug = true; 
+		});
 	}
 	JimWiFi jw;
 	MQTTClient mqtt = MQTTClient("192.168.5.1", basename_strip_ext(__BASE_FILE__).c_str());
@@ -1547,15 +1550,15 @@ public:
 		esp_task_wdt_add(NULL);
 
 		Serial.begin(921600, SERIAL_8N1);
-		Serial.println(__BASE_FILE__ " " GIT_VERSION);
+		Serial.println(__BASE_FILE__ " " GIT_VERSION " " __DATE__ " " __TIME__);
 		getLedPin();
 
 		led.setPercent(30);
 		jw.onConnect([this](){
 			led.setPattern(500, 2);
-			jw.debug = mqtt.active = (WiFi.SSID() == "ChloeNet");
+			jw.debug = mqtt.active = (WiFi.SSID() == "ChloeNet" || WiFi.SSID() == "FakeWifi");
 			Serial.printf("Connected to AP '%s' in %dms, IP=%s\n",
-				WiFi.SSID(), millis(), WiFi.localIP().toString().c_str());
+				WiFi.SSID().c_str(), millis(), WiFi.localIP().toString().c_str());
 			if (onConn != NULL) { 
 				onConn();
 			}
@@ -1564,7 +1567,6 @@ public:
 			string r = cli.process(m.c_str());
 			mqtt.pub(r.c_str());
 		});
-		delay(1000);
 	}
 	void out(const char *format, ...) { 
 		va_list args;

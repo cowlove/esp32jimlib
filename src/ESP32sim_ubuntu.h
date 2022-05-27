@@ -1,3 +1,5 @@
+#ifndef _ESP32SIM_UBUNTU_H_
+#define _ESP32SIM_UBUNTU_H_
 /* Simple library and simulation environment to compile and run an Arduino sketch as a 
  * standard C command line program. 
  * 
@@ -56,6 +58,10 @@ void esp_task_wdt_reset() {}
 esp_err_t esp_task_wdt_add(void *) { return 0; }
 esp_err_t esp_task_wdt_delete(const void *) { return 0; }
 int rtc_get_reset_reason(int) { return 0; } 
+//static inline void ledcSetup(int, int, int) {}
+//static inline void ledcAttachPin(int, int) {}
+//static inline void ledcWrite(int, int) {}
+
 
 namespace fs { 
 class File {
@@ -109,11 +115,11 @@ struct OneWireNg {
 	OneWireNg(int, int) {}
 	typedef int ErrorCode; 
 	typedef int Id[8];
-	static const int EC_NO_DEVS = 0, EC_MORE = 0, EC_DONE = 0;
+	static const int EC_NO_DEVS = 0, EC_MORE = 1, EC_DONE = 0;
 	void writeByte(int) {}
 	void addressSingle(Id) {}
 	void touchBytes(const unsigned char *, int) {}
-	void searchReset();
+	void searchReset() {}
 	static int crc8(const unsigned char *, int) { return 0; }
 	int search(Id) { return 0; }
 };
@@ -191,6 +197,7 @@ int digitalPinToInterrupt(int) { return 0; }
 void attachInterrupt(int, void (*i)(), int) { intMan.intFunc = i; } 
 void ledcSetup(int, int, int) {}
 void ledcAttachPin(int, int) {}
+void ledcDetachPin(int) {}
 void delayMicroseconds(int m) { _micros += m; intMan.run(); }
 void delay(int m) { delayMicroseconds(m*1000); }
 void yield() { intMan.run(); }
@@ -242,9 +249,9 @@ class String {
 };
 
 String operator +(const char *a, const String &b) { return String(a) + b; }
-bool operator ==(const char *a, const String &b) { return String(a) == b; }
-bool operator ==(const String &b, const char *a) { return String(a) == b; }
-
+bool operator ==(const char *a, const String &b) { return b.st == a; }
+bool operator ==(const String &a, const char *b) { return a.st == b; }
+bool operator ==(const String &a, const String &b) { return a.st == b.st; }
 class IPAddress {
 public:
 	IPAddress(int, int, int, int) {}
@@ -256,8 +263,9 @@ public:
 
 class FakeSerial { 
 	public:
+	deque<pair<uint64_t,String>> inputQueue;
 	String inputLine;
-	bool toConsole = false;
+	int toConsole = 0;
 	void begin(int a = 0, int b = 0, int c = 0, int d = 0) {}
 	void print(int, int) {}
 	void print(const char *p) { this->printf("%s", p); }
@@ -273,16 +281,40 @@ class FakeSerial {
 	void setTimeout(int) {}
 	void flush() {} 
 	int availableForWrite() { return 1; } 
-	int available() { return inputLine.length(); }
+	int available() {
+		if (inputLine.length() > 0)
+			return inputLine.length(); 
+		if (inputQueue.size() > 0 && millis() >= inputQueue[0].first) 
+			return inputQueue[0].second.length();
+		return 0;
+	}
 	int readBytes(uint8_t *b, int l) {
+		if (inputLine.length() == 0 && inputQueue.size() > 0 && millis() >= inputQueue[0].first) { 
+			inputLine = inputQueue[0].second;
+			inputQueue.pop_front();
+		}
 		int rval =  min(inputLine.length(), l);
-		strncpy((char *)b, inputLine.c_str(), rval);
-		inputLine = String();
+		if (rval > 0) {
+			strncpy((char *)b, inputLine.c_str(), rval);
+			if (rval < inputLine.length())
+				inputLine = inputLine.substring(rval, -1);
+			else 
+				inputLine = "";
+		}
 		return rval;
 	} 
 	int write(const uint8_t *, int) { return 0; }
 	int write(const char *) { return 0; }	
-	int read() { return 0; }
+	int read() { 
+		uint8_t b;
+		if (readBytes(&b, 1) == 1)
+			return b;
+		return -1; 
+	}
+
+	void scheduleInput(int64_t ms, const String &s) { 
+		inputQueue.push_back(pair<int64_t,String>(ms, s));
+	}
 } Serial, Serial1, Serial2;
 
 #define WL_CONNECTED 0
@@ -301,7 +333,7 @@ class FakeWiFi {
 	void setSleep(bool) {}
 	void mode(int) {}
 	void disconnect(bool) {}
-	String SSID(int i = 0) { return String(); }
+	String SSID(int i = 0) { return String("FakeWiFi"); }
 	int waitForConnectResult() { return 0; }
 	int scanNetworks() { return 0; }
 	String RSSI(int i = 0) { return String(); }
@@ -313,7 +345,7 @@ class WiFiClientSecure {
 	public:
 	void setInsecure() {}
 };
-
+ 
 class WiFiClient { 
 	public:
 	int available() { return 0; }
@@ -613,13 +645,27 @@ public:
 	typedef vector<TimerInfo> timers;
 	void main(int argc, char **argv) {
 		float seconds = 0;
+		Serial.toConsole = true;
 		for(char **a = argv + 1; a < argv+argc; a++) {
-			if (strcmp(*a, "--serial") == 0) Serial.toConsole = true;
+			if (strcmp(*a, "--serial") == 0) {
+				printf("--serial is depricated, use --serialConsole\n");
+				::exit(-1);
+			}
+			else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
 			else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%f", &seconds); 
 			else if (strcmp(*a, "--interruptFile") == 0) { 
 				intMan.setInterruptFile(*(++a));
-			}
-			else for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
+			} else if (strcmp(*a, "--button") == 0) {
+                        int pin, clicks, longclick;
+                        float tim;
+                        sscanf(*(++a), "%f,%d,%d,%d", &tim, &pin, &clicks, &longclick);
+                        bm.addPress(pin, tim, clicks, longclick);
+			} else if (strcmp(*a, "--serialInput") == 0) {
+				float seconds;
+				sscanf(*(++a), "%f", &seconds);
+				Serial.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
+			
+			} else for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
 				(*it)->parseArg(a, argv + argc);
 			}
 		}
@@ -659,3 +705,4 @@ int main(int argc, char **argv) {
 	esp32sim.main(argc, argv);
 }
 
+#endif // #ifdef _ESP32SIM_UBUNTU_H_

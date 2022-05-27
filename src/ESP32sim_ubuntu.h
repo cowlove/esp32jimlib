@@ -38,6 +38,7 @@ static uint64_t _micros = 0;
 static uint64_t _microsMax = 0xffffffff;
 uint64_t micros() { return _microsMax > 0 ? ++_micros & _microsMax : ++_micros; }
 uint64_t millis() { return ++_micros / 1000; }
+void ESP32sim_exit(); 
 
 // Stub out FreeRTOS stuff 
 typedef int SemaphoreHandle_t;
@@ -246,6 +247,7 @@ class String {
 	operator const char *() { return c_str(); } 
 	int indexOf(char c) { return st.find(c); } 
 	String substring(int a, int b) { return String(st.substr(a, b)); }  
+	void replace(const char *, const char *) {}
 };
 
 String operator +(const char *a, const String &b) { return String(a) + b; }
@@ -317,13 +319,38 @@ class FakeSerial {
 	}
 } Serial, Serial1, Serial2;
 
+typedef FakeSerial HardwareSerial;
+
 #define WL_CONNECTED 0
 #define WIFI_STA 0
+#define WIFI_OFF 0
 #define DEC 0
 #define HEX 0 
 
 void esp_read_mac(uint8_t *, int) {}
 #define ESP_MAC_WIFI_STA 0
+
+typedef int gpio_num_t;
+
+void gpio_deep_sleep_hold_dis() {}
+void gpio_deep_sleep_hold_dis(int) {}
+void gpio_deep_sleep_hold_en() {}
+void gpio_hold_dis(int)  {}
+void gpio_hold_en(int)  {}
+void esp_sleep_enable_timer_wakeup(uint64_t) {}
+void esp_deep_sleep_start() { ESP32sim_exit(); }
+
+struct JsonResult { 
+	operator int()  { return 0; }
+	operator const char *() { return ""; }	
+};
+template<int N>
+struct StaticJsonDocument { 
+	JsonResult operator[] (const char *) { return JsonResult(); }
+};
+
+typedef int DeserializationError;
+int deserializeJson(StaticJsonDocument<1024>, String) { return 0; }
 
 class FakeWiFi {
 	public:
@@ -339,6 +366,7 @@ class FakeWiFi {
 	String RSSI(int i = 0) { return String(); }
 	void disconnect() {}
 	void reconnect() {}
+	String macAddress() { return String("DEADBEEFFF"); }
 } WiFi;
 
 class WiFiClientSecure {
@@ -354,13 +382,15 @@ class WiFiClient {
 
 class HTTPClient { 
 	public:
-	void begin(WiFiClientSecure, const char *) {}
+	int begin(WiFiClientSecure, const char *) { return 0; }
 	String getString() { return String(); }
 	int GET() { return 0; }
 	int getSize() { return 0; }
 	WiFiClient *getStreamPtr() { return 0; } 
 	bool connected() { return 0; } 
 	void end() {}
+	void addHeader(const char *, const char *) {}
+	int POST(const char *) { return 0; }
 };
 
 #define PROGMEM 

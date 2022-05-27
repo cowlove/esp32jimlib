@@ -656,7 +656,7 @@ public:
 			else if (strcmp(*a, "--interruptFile") == 0) { 
 				intMan.setInterruptFile(*(++a));
 			} else if (strcmp(*a, "--button") == 0) {
-                        int pin, clicks, longclick;
+                        int pin, clicks = 1, longclick = 0;
                         float tim;
                         sscanf(*(++a), "%f,%d,%d,%d", &tim, &pin, &clicks, &longclick);
                         bm.addPress(pin, tim, clicks, longclick);

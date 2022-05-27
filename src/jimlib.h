@@ -1462,7 +1462,7 @@ public:
 			std::string str = line;
 			if (std::regex_match(str, res, exp))  
 				rval += i->second(line, res);
-			}
+		}
 		return rval;
 	}
 	template<typename T>
@@ -1492,11 +1492,20 @@ template<> const char *CommandLineInterfaceESP32::formatOf<int>() { return "%i";
 template<>
 void CommandLineInterfaceESP32::hookRaw<string>(const char *pat, string *v) {
 	on(pat, [v](const char *, smatch m) { 
-		if (m.size() > 1)
+		if (m.size() > 1 && m.str(1).length() > 0)
 			*v = m.str(1).c_str();
-		return (*v).c_str();
+		return string(*v);
 	});
 }
+template<>
+void CommandLineInterfaceESP32::hookRaw<String>(const char *pat, String *v) {
+	on(pat, [v](const char *, smatch m) { 
+		if (m.size() > 1 && m.str(1).length() > 0)
+			*v = m.str(1).c_str();
+		return string((*v).c_str());
+	});
+}
+
 
 // TODO: need to reimplement this without std::regex so that ESP8266 can still fit in OTA
 struct CommandLineInterfaceESP8266 { 
@@ -1594,6 +1603,7 @@ class CliVariable {
 
 #define CLI_VARIABLE_INT(name,val) CliVariable<int> name(j.cli, #name, val)
 #define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name(j.cli, #name, val)
+#define CLI_VARIABLE_STRING(name,val) CliVariable<String> name(j.cli, #name, val)
 #define OUT j.out
 #endif
 

@@ -1633,6 +1633,35 @@ class TempSensor {
 
 void digitalToggle(int pin) { pinMode(pin, OUTPUT); digitalWrite(pin, !digitalRead(pin)); }
 
+// registers SETTEMP, CURRENTTEMP, HIST commands with CLI.  Returns heat on/off
+// value from check() function 
+class CliTempControl {
+public:
+	CliVariable<float> setTemp;
+	CliVariable<float> currentTemp;
+	CliVariable<float> hist;
+	CliVariable<int>		 heat;
+	JStuff *j;
+
+	CliTempControl(JStuff *js, float temp, float h) :
+		j(js), setTemp(j->cli, "setTemp", temp),
+		currentTemp(j->cli, "currentTemp", temp), 
+		hist(j->cli, "hist", h),
+		heat(j->cli, "heat", 0) {}
+
+	bool check(float temp) { 
+		currentTemp = temp;
+		if (temp > setTemp) { 
+			heat = 0;
+		} else if (temp > 20 && temp < setTemp - hist) { 
+			heat = 1;
+		}
+		return heat;
+	}	
+	void pub() { 
+		j->out("setTemp: %6.2f currentTemp: %6.2f heat: %d", (float)setTemp, (float)currentTemp, (int)heat);
+	}
+};
 
 
 

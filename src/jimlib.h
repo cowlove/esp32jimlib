@@ -1644,10 +1644,10 @@ public:
 	JStuff *j;
 
 	CliTempControl(JStuff *js, float temp, float h) :
-		j(js), setTemp(j->cli, "setTemp", temp),
-		currentTemp(j->cli, "currentTemp", temp), 
-		hist(j->cli, "hist", h),
-		heat(j->cli, "heat", 0) {}
+		j(js), setTemp(js->cli, "setTemp", temp),
+		currentTemp(js->cli, "currentTemp", temp), 
+		hist(js->cli, "hist", h),
+		heat(js->cli, "heat", 0) {}
 
 	bool check(float temp) { 
 		currentTemp = temp;

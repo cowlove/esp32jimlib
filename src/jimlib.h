@@ -807,7 +807,7 @@ const char* serverIndex =
   "type: 'POST',"
   "data: data,"
   "contentType: false,"
-  "processData:false,"
+  "(process)Data:false,"
   "xhr: function() {"
   "var xhr = new window.XMLHttpRequest();"
   "xhr.upload.addEventListener('progress', function(evt) {"
@@ -1432,8 +1432,7 @@ class CommandLineInterfaceESP32 {
 	std::vector<std::pair<std::string, callback>> handlers;
 public:
 
-	CommandLineInterfaceESP32() { 
-	}
+	CommandLineInterfaceESP32() {}
 
 	void on(const char *pat, callback h) { 
 		handlers.push_back(std::pair<std::string, callback>(pat, h));
@@ -1477,7 +1476,7 @@ public:
 
 	template<typename T>
 	void hookVar(const char *l, T*p) {
-		std::string s = strfmt("set %s[= ](.*)", l); // TODO make = optional 
+		std::string s = strfmt("set %s[= ]*(.*)", l); // TODO make = optional 
 		hookRaw(s.c_str(), p);
 		//s = strfmt("get %s", l);
 		//hookRaw(s.c_str(), p);	
@@ -1516,7 +1515,13 @@ struct CommandLineInterfaceESP8266 {
 	void on(const char *pat, std::function<void()> f) {}
 	void on(const char *pat, std::function<void(std::smatch)> f) {}
 	void on(const char *pat, std::function<void(const char *l)> f) {}
-	string process(const char *line) { return string(); }
+	string process(const char *line) {
+		String s = "TODO: CommandLineInterfaceESP8266 not implemented, ignoring: ";
+		s += line;
+		//mqtt.pub(s.c_str());
+		Serial.print(s); 
+		return string(); 
+	}
 	template<typename T>
 	void hookVar(const char *l, T*p) {}
 };
@@ -1601,9 +1606,9 @@ class CliVariable {
 	T& operator =(T v) { val = v; return val; } 
 };
 
-#define CLI_VARIABLE_INT(name,val) CliVariable<int> name(j.cli, #name, val)
-#define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name(j.cli, #name, val)
-#define CLI_VARIABLE_STRING(name,val) CliVariable<String> name(j.cli, #name, val)
+#define CLI_VARIABLE_INT(name,val) CliVariable<int> name = CliVariable<int>(j.cli, #name, val)
+#define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name = CliVariable<float>(j.cli, #name, val)
+#define CLI_VARIABLE_STRING(name,val) CliVariable<String> name = CliVariable<String>(j.cli, #name, val)
 #define OUT j.out
 #endif
 
@@ -1615,9 +1620,14 @@ class TempSensor {
 	TempSensor(int pin, bool pullup = true) {
 		ow = new OWNG(pin, pullup);
 	}
-	float readTemp() { 
+	float readTemp(int retries = 5) { 
+		for(int i = 0; i < retries; i++) { 
 			std::vector<DsTempData> t = readTemps(ow);
-			return t.size() > 0 ? t[0].degC : 0;
+			if (t.size() > 0) {
+				return t[0].degC;
+			}
+		}	
+		return -999.0;
 	}
 };
 

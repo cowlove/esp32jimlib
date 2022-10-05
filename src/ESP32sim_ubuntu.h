@@ -243,6 +243,7 @@ class String {
 	String &operator+(const String& x) { st = st + x.st; return *this; } 
 	String &operator+(char x) { st = st + x; return *this; } 
 	String &operator+=(char x) { st = st + x; return *this; } 
+	String &operator+=(const char *x) { st = st + x; return *this; } 
 	const char *c_str(void) const { return st.c_str(); }
 	operator const char *() { return c_str(); } 
 	int indexOf(char c) { return st.find(c); } 
@@ -251,6 +252,7 @@ class String {
 };
 
 String operator +(const char *a, const String &b) { return String(a) + b; }
+String operator +(const String &a, const char *b) { return String(a) + String(b); }
 bool operator ==(const char *a, const String &b) { return b.st == a; }
 bool operator ==(const String &a, const char *b) { return a.st == b; }
 bool operator ==(const String &a, const String &b) { return a.st == b.st; }
@@ -268,7 +270,7 @@ class FakeSerial {
 	deque<pair<uint64_t,String>> inputQueue;
 	String inputLine;
 	int toConsole = 0;
-	void begin(int a = 0, int b = 0, int c = 0, int d = 0) {}
+	void begin(int a = 0, int b = 0, int c = 0, int d = 0, bool e = 0) {}
 	void print(int, int) {}
 	void print(const char *p) { this->printf("%s", p); }
 	void println(const char *p= NULL) { this->printf("%s\n", p != NULL ? p : ""); }
@@ -319,7 +321,7 @@ class FakeSerial {
 	}
 } Serial, Serial1, Serial2;
 
-typedef FakeSerial HardwareSerial;
+typedef FakeSerial Stream;
 
 #define WL_CONNECTED 0
 #define WIFI_STA 0
@@ -694,6 +696,11 @@ public:
 				float seconds;
 				sscanf(*(++a), "%f", &seconds);
 				Serial.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
+			
+			} else if (strcmp(*a, "--serial2Input") == 0) {
+				float seconds;
+				sscanf(*(++a), "%f", &seconds);
+				Serial2.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
 			
 			} else for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
 				(*it)->parseArg(a, argv + argc);

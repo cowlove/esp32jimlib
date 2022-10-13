@@ -28,12 +28,25 @@
 #include <functional>
 #include <regex>
 
-using namespace std;
+using std::map;
+using std::ios_base;
+using std::vector;
+using std::pair;
+using std::ifstream;
+using std::string;
+using std::function;
+using std::iterator;
+using std::min;
+using std::max;
+using std::deque;
+using std::to_string;
+
+
 #ifndef GIT_VERSION
 #define GIT_VERSION "no-git-version"
 #endif
 
-typedef char byte;
+#define byte char
 static uint64_t _micros = 0;
 static uint64_t _microsMax = 0xffffffff;
 uint64_t micros() { return _microsMax > 0 ? ++_micros & _microsMax : ++_micros; }

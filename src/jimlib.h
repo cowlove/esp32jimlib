@@ -615,8 +615,7 @@ std::string nmeaChecksum(const std::string &s) {
 		check ^= c;
 	char buf[8];
 	snprintf(buf, sizeof(buf), "*%02X\n", (int)check);
-	return std::string("$") + s + std::string(buf);
-		
+	return std::string("$") + s + std::string(buf);	
 }
 
 //
@@ -897,12 +896,16 @@ class JimWiFi {
 	// TODO: move this into JimWifi
 	SPIFFSVariable<int> lastAP = SPIFFSVariable<int>("/lastap", -1);
 	void autoConnect() {
+		if (!enabled) 
+			return;
+
 		const struct {
 			const char *name;
 			const char *pass;
 		} aps[] = {	{"MOF-Guest", ""},
 					{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
 					{"ChloeNet", "niftyprairie7"},
+					{"ChloeNet3", "niftyprairie7"},
 					{"Team America", "51a52b5354"},  
 					{"TUK-FIRE", "FD priv n3t 20 q4"}};
 
@@ -960,6 +963,7 @@ class JimWiFi {
 public:
     bool updateInProgress = false;
 	bool debug = false;
+	bool enabled = true;
 	WiFiUDP udp;
 	//WiFiMulti wifi;
 	EggTimer connCheck = EggTimer(30000);
@@ -969,7 +973,10 @@ public:
 	void onOTA(std::function<void(void)> oo) { 
 		otaFunc = oo;
 	}
-	void run() { 
+	void run() {
+		if (!enabled) 
+			return;
+
 		if (firstRun) {
 			autoConnect();			
 			firstRun = false;
@@ -1356,8 +1363,10 @@ public:
 
 int getLedPin() { 
 	const String mac = getMacAddress(); 
+	if (mac == PROGMEM "349454C12BB0") return 5; // Lilygo LiPo board
 	if (mac == PROGMEM "9C9C1FC9BE94") return 2;
 	if (mac == PROGMEM "9C9C1FCB0920") return 2;
+	if (mac == PROGMEM "2462ABDDCB34") return 19; // TTGO 1.8 TFT board 
 	Serial.printf("MAC %s not found in getLedPin, defaulting to pin 2\n", mac.c_str());
 	return 2;
 }
@@ -1375,7 +1384,7 @@ public:
 	}
 	void setMs(int p) { set(p * 4715 / 1500); };
 	void setPercent(int p) { set(p * 65535 / 100); } 
-	void set(int p) { 
+	void setRaw(int p) { 
 		while(gradual && pwm != -1 && pwm != p) { 
 			ledcWrite(channel, pwm);  
 			pwm += pwm < p ? 1 : -1;
@@ -1384,35 +1393,48 @@ public:
 		ledcWrite(channel, p); 
 		pwm = p; 
 	} 
+	void set(int p) {  
+		pattern = 0;
+		setRaw(p);
+	}
 	float get() { return (float)pwm / 65535; } 
 
-	int period = 0, pattern = 0, patternLen = 0;
-	float patternBrightness = 1.0;
-	void setPattern(int ms, int pat = 1, float bright = 1.0) { 				
-		period = ms;
+	int patternPeriod = 0, pattern = 0, patternLen = 0, patternCount = 0;
+	float patternBrightness = 1.0, patternSoftness = 0;
+	int lastPatIdx = 0, patternFudgeMs = 0;
+	void setPattern(int ms, int pat, float bright = 1.0, int count =-1) { 				
+		patternPeriod = ms;
 		pattern = pat;
 		patternLen = 0;
+		patternCount = count;
 		patternBrightness = bright;
+		lastPatIdx = 0;
 		while(pat) { 
 			patternLen++;
 			pat = pat >> 1;
 		}
+		patternFudgeMs = millis() % (patternPeriod * patternLen);
 	}
-	void run() { 
-		if (period == 0 || pattern == 0)
+	void run() { // not reentrant, this can crash if isr routines call setPattern() during loop()->run()
+		if (patternPeriod == 0 || pattern == 0)
 			return;
 		int pat = pattern;
-		int pi = (millis() % (period * patternLen)) / period;
+		int pi = ((millis() - patternFudgeMs) % (patternPeriod * patternLen)) / patternPeriod;
 		for (int n = 0; n < min(16, pi); n++) { 
 			pat= pat >> 1;
 		}
 		if (pat & 0x1) { 
-			float v = abs((int)(millis() % period) - period/2.0) / (period / 2.0 / 100);
+			float v = abs((int)(millis() % patternPeriod) - patternPeriod/2.0) / (patternPeriod / 2.0 / 100);
 			v = min(100.0, max(0.0, 100.0 - v * patternBrightness));
-			setPercent(v);
+			setRaw(v * 65535 / 100);
 		} else { 
+			setRaw(0);
+		}
+		if (pi == 0 && lastPatIdx != 0 && patternCount > 0 && --patternCount == 0) {
+			pattern = patternPeriod = patternCount = 0;
 			set(0);
 		}
+		lastPatIdx = pi;
 	}
 };
 
@@ -1534,20 +1556,39 @@ typedef CommandLineInterfaceESP8266 CommandLineInterface;
 
 class JStuff {		
 	bool parseSerial;
+public:
 	std::function<void()> onConn = NULL;
 	LineBuffer lb;
 	bool debug = false;
 public:
 	PwmChannel led = PwmChannel(getLedPin(), 1024, 10, 0);
+	struct {
+		void run() {}
+		void setPattern(int, int) {}
+		void setPercent(int) {}
+	} ledX;
 	CommandLineInterface cli;
 	JStuff(bool ps = true) : parseSerial(ps) {
 		cli.on("DEBUG", [this]() { 
 			jw.debug = debug = true; 
 		});
 	}
+	uint64_t thisRun, lastRun; 
+	bool hz(float hz) { 
+		int us = 1000000.0 / hz;
+		return (thisRun / us != lastRun / us);
+	}
+	bool secTick(float sec) { 
+		return hz(1.0/sec);
+	}
+
+	bool cliEcho = true;
 	JimWiFi jw;
 	MQTTClient mqtt = MQTTClient("192.168.5.1", basename_strip_ext(__BASE_FILE__).c_str());
 	void run() { 
+		lastRun = thisRun;
+		thisRun = micros();
+
 		esp_task_wdt_reset();
 		jw.run(); 
 		mqtt.run(); 
@@ -1555,7 +1596,8 @@ public:
 		while(parseSerial == true && Serial.available()) { 
 			lb.add(Serial.read(), [this](const char *l) {
 				string r = cli.process(l);
-				Serial.println(r.c_str());
+				if (cliEcho) 
+					Serial.println(r.c_str());
 			});
 		}
 	}
@@ -1579,7 +1621,8 @@ public:
 		});
 		mqtt.setCallback([this](String t, String m) {
 			string r = cli.process(m.c_str());
-			mqtt.pub(r.c_str());
+			if (cliEcho) 
+				mqtt.pub(r.c_str());
 		});
 	}
 	void out(const char *format, ...) { 

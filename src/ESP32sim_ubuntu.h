@@ -1,4 +1,4 @@
-#ifndef _ESP32SIM_UBUNTU_H_
+	#ifndef _ESP32SIM_UBUNTU_H_
 #define _ESP32SIM_UBUNTU_H_
 /* Simple library and simulation environment to compile and run an Arduino sketch as a 
  * standard C command line program. 
@@ -343,8 +343,12 @@ typedef FakeSerial Stream;
 #define DEC 0
 #define HEX 0 
 
+
+	
 void esp_read_mac(uint8_t *, int) {}
-#define ESP_MAC_WIFI_STA 0
+
+
+
 
 typedef int gpio_num_t;
 
@@ -525,16 +529,44 @@ public:
 	bool endTransmission() { return false; }
 } Wire;
 
+#define ESP_MAC_WIFI_STA 0
+#define ESP_OK 0 
+#define WIFI_PHY_RATE_24M 0 
+#define ESP_IF_WIFI_STA 0 
+#define WIFI_SECOND_CHAN_NONE 0 
+
 typedef enum {
     ESP_NOW_SEND_SUCCESS = 0,       /**< Send ESPNOW data successfully */
     ESP_NOW_SEND_FAIL,              /**< Send ESPNOW data fail */
 } esp_now_send_status_t;
+
+typedef struct {
+	char peer_addr[6];
+	bool encrypt; 
+	int channel;	
+} esp_now_peer_info_t;
+
+typedef struct { 
+	int ampdu_tx_enable;
+} wifi_init_config_t;
+
+#define WIFI_INIT_CONFIG_DEFAULT() {0}
+
+int esp_wifi_internal_set_fix_rate(int, int, int) { return ESP_OK; } 
+int esp_now_register_recv_cb(void *) { return ESP_OK; }	
+int esp_now_register_send_cb( void *) { return ESP_OK; }
+int esp_now_init() { return ESP_OK; } 
+int esp_now_add_peer(void *) { return ESP_OK; } 
+int esp_wifi_stop() { return ESP_OK; } 
+int esp_wifi_deinit() { return ESP_OK; } 
+int esp_wifi_init(wifi_init_config_t *) { return ESP_OK; } 
+int esp_wifi_start() { return ESP_OK; } 
+int esp_wifi_set_channel(int, int) { return ESP_OK; } 
 typedef void (*esp_now_recv_cb_t)(const uint8_t *mac_addr, const uint8_t *data, int data_len);
 typedef void (*esp_now_send_cb_t)(const uint8_t *mac_addr, esp_now_send_status_t status);
-void esp_now_init() {}
-void esp_now_register_send_cb(esp_now_send_cb_t) {}
-void esp_now_register_recv_cb(esp_now_recv_cb_t) {}
-int esp_now_send(const uint8_t*, const uint8_t*, size_t) { return 0; }
+int esp_now_register_send_cb(esp_now_send_cb_t) { return ESP_OK; }
+int esp_now_register_recv_cb(esp_now_recv_cb_t) { return ESP_OK; }
+int esp_now_send(const uint8_t*, const uint8_t*, size_t) { return ESP_OK; }
 
 #define INV_SUCCESS 1
 #define INV_XYZ_GYRO 1

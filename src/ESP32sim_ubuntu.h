@@ -414,9 +414,9 @@ class PubSubClient {
 	public:
 	PubSubClient(WiFiClient &) {}
 	void publish(const char *, const char *, int p = 0)  {}
-	int connected() { return 0; }
-	int connect(const char *) { return 0; }
-	int subscribe(const char *) { return 0; }
+	int connected() { return 1; }
+	int connect(const char *) { return 1; }
+	int subscribe(const char *) { return 1; }
 	void setServer(const char *, int) {}
 	String state() { return String(); }
 	void loop() {}

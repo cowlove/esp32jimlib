@@ -1710,7 +1710,7 @@ public:
 		j(js), setTemp(js->cli, "setTemp", temp),
 		currentTemp(js->cli, "currentTemp", temp), 
 		hist(js->cli, "hist", h),
-		heat(js->cli, "heat", 0)
+		heat(js->cli, "heat", 0),
 		minTemp(js->cli, "minTemp", 5) {}
 
 	bool check(float temp) { 

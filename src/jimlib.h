@@ -1538,11 +1538,11 @@ struct CommandLineInterfaceESP8266 {
 	void on(const char *pat, std::function<void(std::smatch)> f) {}
 	void on(const char *pat, std::function<void(const char *l)> f) {}
 	string process(const char *line) {
-		String s = "TODO: CommandLineInterfaceESP8266 not implemented, ignoring: ";
+		string s = "TODO: CommandLineInterfaceESP8266 not implemented, ignoring: ";
 		s += line;
 		//mqtt.pub(s.c_str());
-		Serial.print(s); 
-		return string(); 
+		Serial.print(s.c_str()); 
+		return s; 
 	}
 	template<typename T>
 	void hookVar(const char *l, T*p) {}
@@ -1554,12 +1554,28 @@ typedef CommandLineInterfaceESP32 CommandLineInterface;
 typedef CommandLineInterfaceESP8266 CommandLineInterface;
 #endif
 
+template<typename T> 
+class CliVariable {
+	T val;
+  public:
+	CliVariable(CommandLineInterface &c, const char *n) { c.hookVar(n, &val); }
+	CliVariable(CommandLineInterface &c, const char *n, T v) : val(v) { c.hookVar(n, &val); }
+	operator T&() { return val; }
+	T& operator =(T v) { val = v; return val; } 
+};
+
+#define CLI_VARIABLE_INT(name,val) CliVariable<int> name = CliVariable<int>(j.cli, #name, val)
+#define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name = CliVariable<float>(j.cli, #name, val)
+#define CLI_VARIABLE_STRING(name,val) CliVariable<String> name = CliVariable<String>(j.cli, #name, val)
+
 class JStuff {		
 	bool parseSerial;
 public:
 	std::function<void()> onConn = NULL;
 	LineBuffer lb;
 	bool debug = false;
+	CommandLineInterface cli;
+	CliVariable<int> logLevel;
 public:
 	PwmChannel led = PwmChannel(getLedPin(), 1024, 10, 0);
 	struct {
@@ -1567,8 +1583,7 @@ public:
 		void setPattern(int, int) {}
 		void setPercent(int) {}
 	} ledX;
-	CommandLineInterface cli;
-	JStuff(bool ps = true) : parseSerial(ps) {
+	JStuff(bool ps = true) : parseSerial(ps), logLevel(cli, "LOGLEVEL", 1) {
 		cli.on("DEBUG", [this]() { 
 			jw.debug = debug = true; 
 		});
@@ -1635,24 +1650,27 @@ public:
 		Serial.println(buf);
 		//jw.udpDebug(buf);
 	}
+	void log(int ll, const char *format, ...) { 
+		va_list args;
+		va_start(args, format);
+		char buf[256];
+		if (logLevel >= ll) { 
+			vsnprintf(buf, sizeof(buf), format, args);
+			va_end(args);
+			mqtt.pub(buf);
+			Serial.println(buf);
+			//jw.udpDebug(buf);
+		}
+	}
+	void log(int l, String s) { log(l, s.c_str()); }
+	void log(int l, std::string s) { log(l, s.c_str()); }
 	void out(String s) { out(s.c_str()); }
 	void out(std::string s) { out(s.c_str()); }
 };
 
-template<typename T> 
-class CliVariable {
-	T val;
-  public:
-	CliVariable(CommandLineInterface &c, const char *n) { c.hookVar(n, &val); }
-	CliVariable(CommandLineInterface &c, const char *n, T v) : val(v) { c.hookVar(n, &val); }
-	operator T&() { return val; }
-	T& operator =(T v) { val = v; return val; } 
-};
-
-#define CLI_VARIABLE_INT(name,val) CliVariable<int> name = CliVariable<int>(j.cli, #name, val)
-#define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name = CliVariable<float>(j.cli, #name, val)
-#define CLI_VARIABLE_STRING(name,val) CliVariable<String> name = CliVariable<String>(j.cli, #name, val)
 #define OUT j.out
+#define LOG j.log
+
 #endif
 
 class TempSensor { 

@@ -1334,7 +1334,8 @@ public:
 			client.setCallback([this](char* topic, byte* p, unsigned int l) {
 				this->callBack(topic, p, l);
 			});
-			Serial.println("connected");
+			publish("sys", "connected");
+			Serial.println("MQTT connected");
 
 		} else {
 			Serial.print("failed, rc=");
@@ -1701,20 +1702,22 @@ public:
 	CliVariable<float> setTemp;
 	CliVariable<float> currentTemp;
 	CliVariable<float> hist;
-	CliVariable<int>		 heat;
+	CliVariable<int> heat;
+	CliVariable<float> minTemp;
 	JStuff *j;
 
 	CliTempControl(JStuff *js, float temp, float h) :
 		j(js), setTemp(js->cli, "setTemp", temp),
 		currentTemp(js->cli, "currentTemp", temp), 
 		hist(js->cli, "hist", h),
-		heat(js->cli, "heat", 0) {}
+		heat(js->cli, "heat", 0)
+		minTemp(js->cli, "minTemp", 5) {}
 
 	bool check(float temp) { 
 		currentTemp = temp;
 		if (temp > setTemp) { 
 			heat = 0;
-		} else if (temp > 20 && temp < setTemp - hist) { 
+		} else if (temp >= minTemp && temp < setTemp - hist) { 
 			heat = 1;
 		}
 		return heat;

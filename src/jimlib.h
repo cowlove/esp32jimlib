@@ -1583,7 +1583,7 @@ public:
 		void setPattern(int, int) {}
 		void setPercent(int) {}
 	} ledX;
-	JStuff(bool ps = true) : parseSerial(ps), logLevel(cli, "LOGLEVEL", 1) {
+	JStuff(bool ps = true) : parseSerial(ps), logLevel(cli, "logLevel", 1) {
 		cli.on("DEBUG", [this]() { 
 			jw.debug = debug = true; 
 		});

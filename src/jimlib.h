@@ -1334,7 +1334,8 @@ public:
 			client.setCallback([this](char* topic, byte* p, unsigned int l) {
 				this->callBack(topic, p, l);
 			});
-			Serial.println("connected");
+			publish("sys", "connected");
+			Serial.println("MQTT connected");
 
 		} else {
 			Serial.print("failed, rc=");
@@ -1538,11 +1539,11 @@ struct CommandLineInterfaceESP8266 {
 	void on(const char *pat, std::function<void(std::smatch)> f) {}
 	void on(const char *pat, std::function<void(const char *l)> f) {}
 	string process(const char *line) {
-		String s = "TODO: CommandLineInterfaceESP8266 not implemented, ignoring: ";
+		string s = "TODO: CommandLineInterfaceESP8266 not implemented, ignoring: ";
 		s += line;
 		//mqtt.pub(s.c_str());
-		Serial.print(s); 
-		return string(); 
+		Serial.print(s.c_str()); 
+		return s; 
 	}
 	template<typename T>
 	void hookVar(const char *l, T*p) {}
@@ -1554,12 +1555,28 @@ typedef CommandLineInterfaceESP32 CommandLineInterface;
 typedef CommandLineInterfaceESP8266 CommandLineInterface;
 #endif
 
+template<typename T> 
+class CliVariable {
+	T val;
+  public:
+	CliVariable(CommandLineInterface &c, const char *n) { c.hookVar(n, &val); }
+	CliVariable(CommandLineInterface &c, const char *n, T v) : val(v) { c.hookVar(n, &val); }
+	operator T&() { return val; }
+	T& operator =(T v) { val = v; return val; } 
+};
+
+#define CLI_VARIABLE_INT(name,val) CliVariable<int> name = CliVariable<int>(j.cli, #name, val)
+#define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name = CliVariable<float>(j.cli, #name, val)
+#define CLI_VARIABLE_STRING(name,val) CliVariable<String> name = CliVariable<String>(j.cli, #name, val)
+
 class JStuff {		
 	bool parseSerial;
 public:
 	std::function<void()> onConn = NULL;
 	LineBuffer lb;
 	bool debug = false;
+	CommandLineInterface cli;
+	CliVariable<int> logLevel;
 public:
 	PwmChannel led = PwmChannel(getLedPin(), 1024, 10, 0);
 	struct {
@@ -1567,8 +1584,7 @@ public:
 		void setPattern(int, int) {}
 		void setPercent(int) {}
 	} ledX;
-	CommandLineInterface cli;
-	JStuff(bool ps = true) : parseSerial(ps) {
+	JStuff(bool ps = true) : parseSerial(ps), logLevel(cli, "logLevel", 1) {
 		cli.on("DEBUG", [this]() { 
 			jw.debug = debug = true; 
 		});
@@ -1635,24 +1651,27 @@ public:
 		Serial.println(buf);
 		//jw.udpDebug(buf);
 	}
+	void log(int ll, const char *format, ...) { 
+		va_list args;
+		va_start(args, format);
+		char buf[256];
+		if (logLevel >= ll) { 
+			vsnprintf(buf, sizeof(buf), format, args);
+			va_end(args);
+			mqtt.pub(buf);
+			Serial.println(buf);
+			//jw.udpDebug(buf);
+		}
+	}
+	void log(int l, String s) { log(l, s.c_str()); }
+	void log(int l, std::string s) { log(l, s.c_str()); }
 	void out(String s) { out(s.c_str()); }
 	void out(std::string s) { out(s.c_str()); }
 };
 
-template<typename T> 
-class CliVariable {
-	T val;
-  public:
-	CliVariable(CommandLineInterface &c, const char *n) { c.hookVar(n, &val); }
-	CliVariable(CommandLineInterface &c, const char *n, T v) : val(v) { c.hookVar(n, &val); }
-	operator T&() { return val; }
-	T& operator =(T v) { val = v; return val; } 
-};
-
-#define CLI_VARIABLE_INT(name,val) CliVariable<int> name = CliVariable<int>(j.cli, #name, val)
-#define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name = CliVariable<float>(j.cli, #name, val)
-#define CLI_VARIABLE_STRING(name,val) CliVariable<String> name = CliVariable<String>(j.cli, #name, val)
 #define OUT j.out
+#define LOG j.log
+
 #endif
 
 class TempSensor { 
@@ -1683,20 +1702,22 @@ public:
 	CliVariable<float> setTemp;
 	CliVariable<float> currentTemp;
 	CliVariable<float> hist;
-	CliVariable<int>		 heat;
+	CliVariable<int> heat;
+	CliVariable<float> minTemp;
 	JStuff *j;
 
 	CliTempControl(JStuff *js, float temp, float h) :
 		j(js), setTemp(js->cli, "setTemp", temp),
 		currentTemp(js->cli, "currentTemp", temp), 
 		hist(js->cli, "hist", h),
-		heat(js->cli, "heat", 0) {}
+		heat(js->cli, "heat", 0),
+		minTemp(js->cli, "minTemp", 5) {}
 
 	bool check(float temp) { 
 		currentTemp = temp;
 		if (temp > setTemp) { 
 			heat = 0;
-		} else if (temp > 20 && temp < setTemp - hist) { 
+		} else if (temp >= minTemp && temp < setTemp - hist) { 
 			heat = 1;
 		}
 		return heat;

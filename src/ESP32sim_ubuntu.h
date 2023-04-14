@@ -46,6 +46,16 @@ using std::to_string;
 #define GIT_VERSION "no-git-version"
 #endif
 
+class ESP32sim_Module {
+public:
+	ESP32sim_Module();
+	virtual void parseArg( char **&, char **) {}
+	virtual void setup() {};
+	virtual void loop() {};
+	virtual void done() {};
+};
+
+
 #define byte char
 static uint64_t _micros = 0;
 static uint64_t _microsMax = 0xffffffff;
@@ -139,35 +149,7 @@ struct OneWireNg {
 };
 typedef OneWireNg OneWireNg_CurrentPlatform;
 
-class ButtonManager {
-	struct PressInfo { int pin; float start; float duration; };
-	vector<PressInfo> presses;
-public:
-	void add(int pin, float start, float duration) {
-		PressInfo pi; 
-		pi.pin = pin; pi.start = start; pi.duration = duration;
-		presses.push_back(pi);
-	}
-	void addPress(int pin, float time, int clicks, bool longPress)  {
-		for(int n = 0; n < clicks; n++) {
-			float duration = longPress ? 2.5 : .2; 
-			add(pin, time,  duration);
-			time += duration + .2;
-		}
-	}
-	int check(int pin, float time) {
-		float now = millis() / 1000.0; // TODO this is kinda slow 
-		for (vector<PressInfo>::iterator it = presses.begin(); it != presses.end(); it++) { 
-			if (it->pin == pin && now >= it->start && now < it->start + it->duration)
-				return 0;
-		} 
-		return 1;
-	} 
-} bm;
 
-int digitalRead(int p) {
-	return bm.check(p, micros()/1000000.0);
-}
 
 static int ESP32sim_currentPwm[16];
 void ledcWrite(int chan, int val) {
@@ -205,8 +187,49 @@ public:
 	}
 } intMan;
 
+
+// simple pin manager to simply return values that were written
+class ESP32sim_pinManager : public ESP32sim_Module {
+public:
+	struct PressInfo { int pin; float start; float duration; };
+	vector<PressInfo> presses;
+	void add(int pin, float start, float duration) {
+		PressInfo pi; 
+		pi.pin = pin; pi.start = start; pi.duration = duration;
+		presses.push_back(pi);
+	}
+	void addPress(int pin, float time, int clicks, bool longPress)  {
+		for(int n = 0; n < clicks; n++) {
+			float duration = longPress ? 2.5 : .2; 
+			add(pin, time,  duration);
+			time += duration + .2;
+		}
+	}
+	ESP32sim_pinManager() { 
+		for(int i = 0; i < sizeof(pins)/sizeof(pins[0]); i++)
+			pins[i] = 1;
+		setPinManager(this); 
+	}
+	int pins[128];
+	virtual int analogRead(int p) { return 1; }
+	virtual void digitalWrite(int p, int v) { pins[p] = v; }
+	static ESP32sim_pinManager *manager;
+	static void setPinManager(ESP32sim_pinManager *p) { manager = p; }  
+	int digitalRead(int pin) {
+		float now = millis() / 1000.0; // TODO this is kinda slow 
+		for (vector<PressInfo>::iterator it = presses.begin(); it != presses.end(); it++) { 
+			if (it->pin == pin && now >= it->start && now < it->start + it->duration)
+				return 0;
+		} 
+		return pins[pin];
+	}
+} pinManObject;
+
+ESP32sim_pinManager *ESP32sim_pinManager::manager = &pinManObject;
+
 void pinMode(int, int) {}
-void digitalWrite(int, int) {};
+void digitalWrite(int p, int v) { ESP32sim_pinManager::manager->digitalWrite(p, v); };
+int digitalRead(int p) { return ESP32sim_pinManager::manager->digitalRead(p); }
 int digitalPinToInterrupt(int) { return 0; }
 void attachInterrupt(int, void (*i)(), int) { intMan.intFunc = i; } 
 void ledcSetup(int, int, int) {}
@@ -217,7 +240,7 @@ void delay(int m) { delayMicroseconds(m*1000); }
 void yield() { intMan.run(); }
 //void analogSetCycles(int) {}
 void adcAttachPin(int) {}
-int analogRead(int) { return 0; } 
+int analogRead(int p) { return ESP32sim_pinManager::manager->analogRead(p); } 
 
 #define radians(x) ((x)*M_PI/180)
 #define degrees(x) ((x)*180.0/M_PI)
@@ -252,7 +275,8 @@ class String {
 	String() {}
 	String(int, int) {}
 	int length() const { return st.length(); } 
-	bool operator!=(const String& x) { return st != x.st; } 
+	bool operator!=(const String& x) const { return st != x.st; }
+	bool operator==(const String& x) const { return st == x.st; } 
 	String &operator+(const String& x) { st = st + x.st; return *this; } 
 	String &operator+(const char *x) { st = st + x; return *this; } 
 	String &operator+(char x) { st = st + x; return *this; } 
@@ -337,7 +361,8 @@ class FakeSerial {
 
 typedef FakeSerial Stream;
 
-#define WL_CONNECTED 0
+#define WL_DISCONNECTED 0
+#define WL_CONNECTED 1
 #define WIFI_STA 0
 #define WIFI_OFF 0
 #define DEC 0
@@ -374,8 +399,9 @@ int deserializeJson(StaticJsonDocument<1024>, String) { return 0; }
 
 class FakeWiFi {
 	public:
-	int begin(const char *, const char *) { return 0; }
-	int status() { return WL_CONNECTED; } 
+	int curStatus = WL_DISCONNECTED;
+	int begin(const char *, const char *) { curStatus = WL_CONNECTED; return 0; }
+	int status() { return curStatus; } 
 	IPAddress localIP() { return IPAddress(); } 
 	void setSleep(bool) {}
 	void mode(int) {}
@@ -414,18 +440,48 @@ class HTTPClient {
 };
 
 #define PROGMEM 
-class PubSubClient {
-	public:
+class PubSubClient : public ESP32sim_Module {
+	std::function<void(char *, byte *p, unsigned int)> callback = nullptr;
+	struct Event {
+		float sec;
+		String t, p;
+	};
+	vector<Event> events;
+  public:
+	void parseArg(char **&a, char **) override {
+		if (strcmp(*a, "--mqtt") == 0) {
+			Event e; 
+			sscanf(*(++a), "%f", &e.sec);
+			e.t = String(*(++a));
+			e.p = String(*(++a));
+			events.push_back(e);
+		}
+	}
+	virtual void loop() override { 
+		for(vector<Event>::iterator i = events.begin(); i != events.end(); i++) {
+			if (i->sec < _micros / 1000000.0) { 
+				if (callback) { 
+					callback((char *)i->t.c_str(), (byte *)i->p.c_str(), i->p.length());
+				}
+				events.erase(i);
+				break;
+			}
+		}
+	}
+	int isConnected = 0;
 	PubSubClient(WiFiClient &) {}
-	void publish(const char *, const char *, int p = 0)  {}
-	int connected() { return 0; }
-	int connect(const char *) { return 0; }
-	int subscribe(const char *) { return 0; }
+	void publish(const char *t, const char *p, int l = 0)  {
+		printf("MQTT: %s: %s\n", t, p);
+	}
+	int connected() { return isConnected; }
+	int connect(const char *) { return isConnected = 1; }
+	int subscribe(const char *) { return 1; }
 	void setServer(const char *, int) {}
 	String state() { return String(); }
-	void loop() {}
-	int setCallback(std::function<void(char *, byte *p, unsigned int)>) { return 0; } 
-
+	int setCallback(std::function<void(char *, byte *p, unsigned int)> c) { 
+		callback = c;
+		return 0; 
+	} 
 };
 class FakeSD {
 	public:
@@ -703,15 +759,6 @@ public:
 void setup(void);
 void loop(void);
 
-class ESP32sim_Module {
-public:
-	ESP32sim_Module();
-	virtual void parseArg( char **&, char **) {}
-	virtual void setup() {};
-	virtual void loop() {};
-	virtual void done() {};
-};
-
 class ESP32sim {
 public:
 	vector<ESP32sim_Module *> modules;
@@ -737,7 +784,7 @@ public:
                         int pin, clicks = 1, longclick = 0;
                         float tim;
                         sscanf(*(++a), "%f,%d,%d,%d", &tim, &pin, &clicks, &longclick);
-                        bm.addPress(pin, tim, clicks, longclick);
+                        ESP32sim_pinManager::manager->addPress(pin, tim, clicks, longclick);
 			} else if (strcmp(*a, "--serialInput") == 0) {
 				float seconds;
 				sscanf(*(++a), "%f", &seconds);
@@ -747,7 +794,6 @@ public:
 				float seconds;
 				sscanf(*(++a), "%f", &seconds);
 				Serial2.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
-			
 			} else for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
 				(*it)->parseArg(a, argv + argc);
 			}

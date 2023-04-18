@@ -277,9 +277,9 @@ class String {
 	int length() const { return st.length(); } 
 	bool operator!=(const String& x) const { return st != x.st; }
 	bool operator==(const String& x) const { return st == x.st; } 
-	String &operator+(const String& x) { st = st + x.st; return *this; } 
-	String &operator+(const char *x) { st = st + x; return *this; } 
-	String &operator+(char x) { st = st + x; return *this; } 
+	String operator+(const String& x) { return st + x.st; } 
+	String operator+(const char *x) { return st + x; } 
+	String operator+(char x) { return st + x; } 
 	String &operator+=(char x) { st = st + x; return *this; } 
 	String &operator+=(const char *x) { st = st + x; return *this; } 
 	const char *c_str(void) const { return st.c_str(); }

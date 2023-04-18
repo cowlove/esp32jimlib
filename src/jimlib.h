@@ -906,6 +906,8 @@ class JimWiFi {
 					{"MOF-Guest", ""},
 					{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
 					{"ChloeNet3", "niftyprairie7"},
+                                        {"ChloeNet4", "niftyprairie7"},
+
 					{"Team America", "51a52b5354"},  
 					{"TUK-FIRE", "FD priv n3t 20 q4"}};
 
@@ -1301,7 +1303,6 @@ String buf2str(const byte *buf, int len) {
 
 class MQTTClient { 
 	WiFiClient espClient;
-	String topicPrefix, server;
 	void callBack(char *topic, byte *p, unsigned int l) {
 		if (userCallback != NULL) { 
 			userCallback(String(topic), buf2str(p, l));
@@ -1309,6 +1310,7 @@ class MQTTClient {
 	}
 	std::function<void(String,String)> userCallback = NULL;
 public:
+        String topicPrefix, server;
 	bool active;
 	PubSubClient client;
 	void setCallback(std::function<void(String,String)> cb) { userCallback = cb; }
@@ -1335,7 +1337,8 @@ public:
 				this->callBack(topic, p, l);
 			});
 			publish("sys", "connected");
-			Serial.println("MQTT connected");
+			Serial.print("MQTT connected, subscribed to ");
+			Serial.println((topicPrefix + "/in").c_str());
 
 		} else {
 			Serial.print("failed, rc=");
@@ -1628,7 +1631,9 @@ public:
 		led.setPercent(30);
 		jw.onConnect([this](){
 			led.setPattern(500, 2);
-			jw.debug = mqtt.active = (WiFi.SSID() == "ChloeNet" || WiFi.SSID() == "FakeWiFi");
+			if (WiFi.SSID() == "ChloeNet" || WiFi.SSID() == "FakeWiFi") {
+				jw.debug = mqtt.active = true;  
+ 			}
 			Serial.printf("Connected to AP '%s' in %dms, IP=%s\n",
 				WiFi.SSID().c_str(), millis(), WiFi.localIP().toString().c_str());
 			if (onConn != NULL) { 

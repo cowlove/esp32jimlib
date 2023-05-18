@@ -902,10 +902,12 @@ class JimWiFi {
 		const struct {
 			const char *name;
 			const char *pass;
-		} aps[] = {	{"MOF-Guest", ""},
+		} aps[] = {	{"ChloeNet", "niftyprairie7"},
+					{"MOF-Guest", ""},
 					{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
-					{"ChloeNet", "niftyprairie7"},
 					{"ChloeNet3", "niftyprairie7"},
+                                        {"ChloeNet4", "niftyprairie7"},
+
 					{"Team America", "51a52b5354"},  
 					{"TUK-FIRE", "FD priv n3t 20 q4"}};
 
@@ -990,20 +992,20 @@ public:
 			if (firstConnect ==  true) { 
 				firstConnect = false;
 #if  0
-			  server.on("/", HTTP_GET, []() {
+				server.on("/", HTTP_GET, []() {
 				server.sendHeader("Connection", "close");
 				server.send(200, "text/html", loginIndex);
-			  });
-			  server.on("/serverIndex", HTTP_GET, []() {
+				});
+				server.on("/serverIndex", HTTP_GET, []() {
 				server.sendHeader("Connection", "close");
 				server.send(200, "text/html", serverIndex);
-			  });
-			  /*handling uploading firmware file */
-			  server.on("/update", HTTP_POST, []() {
+				});
+				/*handling uploading firmware file */
+				server.on("/update", HTTP_POST, []() {
 				server.sendHeader("Connection", "close");
 				server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
 				ESP.restart();
-			  }, [this]() {
+				}, [this]() {
 				HTTPUpload& upload = server.upload();
 				esp_task_wdt_reset();
 
@@ -1011,73 +1013,73 @@ public:
 					if (this->otaFunc != NULL) { 
 						this->otaFunc();
 					}
-				  Serial.printf("Update: %s\n", upload.filename.c_str());
-				  if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
+					Serial.printf("Update: %s\n", upload.filename.c_str());
+					if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
 					Update.printError(Serial);
-				  }
+					}
 				} else if (upload.status == UPLOAD_FILE_WRITE) {
-				  //Serial.printf("Update: write %d bytes\n", upload.currentSize);
-				  esp_task_wdt_reset();	
-				  /* flashing firmware to ESP*/
-				  if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+					//Serial.printf("Update: write %d bytes\n", upload.currentSize);
+					esp_task_wdt_reset();	
+					/* flashing firmware to ESP*/
+					if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
 					Update.printError(Serial);
-				  }
-				  delay(10);
+					}
+					delay(10);
 				} else if (upload.status == UPLOAD_FILE_END) {
-				  if (Update.end(true)) { //true to set the size to the current progress
+					if (Update.end(true)) { //true to set the size to the current progress
 					Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
-				  } else {
+					} else {
 					Update.printError(Serial);
-				  }
+					}
 				}
-			  });
-			  server.begin();
+				});
+				server.begin();
 #endif
 
-			ArduinoOTA.onStart([this]() {
-				String type;
-				if (this->otaFunc != NULL) { 
-					this->otaFunc();
-				}
-				if (ArduinoOTA.getCommand() == U_FLASH) {
-				  type = "sketch";
-				} else { // U_FS
-				  type = "filesystem";
-				}
-				#ifdef ESP32
-				WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector   
-				#endif
+				ArduinoOTA.onStart([this]() {
+					String type;
+					if (this->otaFunc != NULL) { 
+						this->otaFunc();
+					}
+					if (ArduinoOTA.getCommand() == U_FLASH) {
+					type = "sketch";
+					} else { // U_FS
+					type = "filesystem";
+					}
+					#ifdef ESP32
+					WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector   
+					#endif
 
-				// NOTE: if updating FS this would be the place to unmount FS using FS.end()
-				Serial.println("Start updating " + type);
+					// NOTE: if updating FS this would be the place to unmount FS using FS.end()
+					Serial.println("Start updating " + type);
+					});
+					ArduinoOTA.onEnd([]() {
+					Serial.println("\nEnd");
 				});
-				ArduinoOTA.onEnd([]() {
-				Serial.println("\nEnd");
-			});
-			ArduinoOTA.onProgress([&](unsigned int progress, unsigned int total) {
-					//Serial.printf("Progress: %u%%\n", (progress / (total / 100)));
-					esp_task_wdt_reset();
-					updateInProgress = true;
-					delay(30);
-			});
-			ArduinoOTA.onError([&](ota_error_t error) {
-				Serial.printf("Error[%u]: ", error);
-				if (error == OTA_AUTH_ERROR) {
-				  Serial.println("Auth Failed");
-				} else if (error == OTA_BEGIN_ERROR) {
-				  Serial.println("Begin Failed");
-				} else if (error == OTA_CONNECT_ERROR) {
-				  Serial.println("Connect Failed");
-				} else if (error == OTA_RECEIVE_ERROR) {
-				  Serial.println("Receive Failed");
-				} else if (error == OTA_END_ERROR) {
-				  Serial.println("End Failed");
-				}
-				updateInProgress = false;
-			});
- 
+				ArduinoOTA.onProgress([&](unsigned int progress, unsigned int total) {
+						//Serial.printf("Progress: %u%%\n", (progress / (total / 100)));
+						esp_task_wdt_reset();
+						updateInProgress = true;
+						delay(30);
+				});
+				ArduinoOTA.onError([&](ota_error_t error) {
+					Serial.printf("Error[%u]: ", error);
+					if (error == OTA_AUTH_ERROR) {
+					Serial.println("Auth Failed");
+					} else if (error == OTA_BEGIN_ERROR) {
+					Serial.println("Begin Failed");
+					} else if (error == OTA_CONNECT_ERROR) {
+					Serial.println("Connect Failed");
+					} else if (error == OTA_RECEIVE_ERROR) {
+					Serial.println("Receive Failed");
+					} else if (error == OTA_END_ERROR) {
+					Serial.println("End Failed");
+					}
+					updateInProgress = false;
+				});
+	
 				
-			ArduinoOTA.begin();
+				ArduinoOTA.begin();
 
 				udp.begin(9999);
 				if (connectFunc != NULL) { 
@@ -1301,7 +1303,6 @@ String buf2str(const byte *buf, int len) {
 
 class MQTTClient { 
 	WiFiClient espClient;
-	String topicPrefix, server;
 	void callBack(char *topic, byte *p, unsigned int l) {
 		if (userCallback != NULL) { 
 			userCallback(String(topic), buf2str(p, l));
@@ -1309,6 +1310,7 @@ class MQTTClient {
 	}
 	std::function<void(String,String)> userCallback = NULL;
 public:
+        String topicPrefix, server;
 	bool active;
 	PubSubClient client;
 	void setCallback(std::function<void(String,String)> cb) { userCallback = cb; }
@@ -1337,7 +1339,6 @@ public:
 			std::string s = strfmt("MQTT connected uptime %.1f sec", millis() / 1000.0);
 			publish("sys", s.c_str());
 			Serial.println(s.c_str());
-
 		} else {
 			Serial.print("failed, rc=");
 			Serial.print(client.state());
@@ -1633,7 +1634,9 @@ public:
 		led.setPercent(30);
 		jw.onConnect([this](){
 			led.setPattern(500, 2);
-			jw.debug = mqtt.active = (WiFi.SSID() == "ChloeNet" || WiFi.SSID() == "FakeWifi");
+			if (WiFi.SSID() == "ChloeNet" || WiFi.SSID() == "FakeWiFi") {
+				jw.debug = mqtt.active = true;  
+ 			}
 			Serial.printf("Connected to AP '%s' in %dms, IP=%s\n",
 				WiFi.SSID().c_str(), millis(), WiFi.localIP().toString().c_str());
 			if (onConn != NULL) { 

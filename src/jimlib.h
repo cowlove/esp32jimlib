@@ -1334,8 +1334,9 @@ public:
 			client.setCallback([this](char* topic, byte* p, unsigned int l) {
 				this->callBack(topic, p, l);
 			});
-			publish("sys", "connected");
-			Serial.println("MQTT connected");
+			std::string s = strfmt("MQTT connected uptime %.1f sec", millis() / 1000.0);
+			publish("sys", s.c_str());
+			Serial.println(s.c_str());
 
 		} else {
 			Serial.print("failed, rc=");
@@ -1377,8 +1378,8 @@ class PwmChannel {
 	int pin; 
 	int channel;
 	int pwm = -1;
-	int gradual;
 public:		
+	int gradual;
 	PwmChannel(int p, int hz = 50, int c = 0, int g = 0) : pin(p), channel(c), gradual(g) {
 		ledcSetup(channel, hz, 16);
 		ledcAttachPin(pin, channel);
@@ -1389,7 +1390,7 @@ public:
 		while(gradual && pwm != -1 && pwm != p) { 
 			ledcWrite(channel, pwm);  
 			pwm += pwm < p ? 1 : -1;
-			delay(gradual);
+			delayMicroseconds(gradual);
 		}
 		ledcWrite(channel, p); 
 		pwm = p; 
@@ -1589,14 +1590,17 @@ public:
 			jw.debug = debug = true; 
 		});
 	}
-	uint64_t thisRun, lastRun; 
+	uint64_t thisRun, lastRun;
+	bool forceTicksNow = false; 
 	bool hz(float hz) { 
 		int us = 1000000.0 / hz;
-		return (thisRun / us != lastRun / us);
+		return forceTicksNow || (thisRun / us != lastRun / us);
 	}
 	bool secTick(float sec) { 
-		return hz(1.0/sec);
+		return 
+		hz(1.0/sec);
 	}
+	void forceTicks() { forceTicksNow = true; }
 
 	bool cliEcho = true;
 	JimWiFi jw;
@@ -1604,6 +1608,7 @@ public:
 	void run() { 
 		lastRun = thisRun;
 		thisRun = micros();
+		forceTicksNow = false;
 
 		esp_task_wdt_reset();
 		jw.run(); 

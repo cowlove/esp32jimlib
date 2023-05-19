@@ -736,6 +736,7 @@ public:
 	float hdg, hac, gs, siv, alt;
 	bool fresh = false; 
 	bool begin(FakeSerial &) { return true; } 
+	bool enableDebugging(FakeSerial &, int) { return true; } 
 	bool setUART1Output(int) { return true; } 
 	float getHeading() { return hdg; }
 	float getHeadingAccEst() { return hac; }
@@ -750,7 +751,7 @@ public:
 		return rval;
 	}	
 	bool setSerialRate(int) { return 0; }
-	bool setAutoPVT(int, int) { return 0; }
+	bool setAutoPVT(int, int, int) { return 0; }
 	void saveConfiguration() {}
 	bool setNavigationFrequency(int) { return 0; } 
 };

@@ -902,7 +902,8 @@ class JimWiFi {
 		const struct {
 			const char *name;
 			const char *pass;
-		} aps[] = {	{"ChloeNet", "niftyprairie7"},
+		} aps[] = {		{"Ping-582B", ""}, 
+					{"ChloeNet", "niftyprairie7"},
 					{"MOF-Guest", ""},
 					{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
 					{"ChloeNet3", "niftyprairie7"},
@@ -1636,6 +1637,7 @@ public:
 			led.setPattern(500, 2);
 			if (WiFi.SSID() == "ChloeNet" || WiFi.SSID() == "FakeWiFi") {
 				jw.debug = mqtt.active = true;  
+				out("JStuff: forcing debug and mqtt.active due to WiFi network");
  			}
 			Serial.printf("Connected to AP '%s' in %dms, IP=%s\n",
 				WiFi.SSID().c_str(), millis(), WiFi.localIP().toString().c_str());

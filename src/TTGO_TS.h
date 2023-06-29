@@ -2,7 +2,7 @@
 #define TTGO_TS_H
 #include "jimlib.h"
 
-//#define File ext::File
+#define File ext::File
 
 // mutex to serialize SD card and TFT writes. 
 Mutex mutexSPI;
@@ -23,6 +23,7 @@ void open_TTGOTS_SD() {
 }
 
 #ifndef UBUNTU
+
 void printDirectory(File dir, int numTabs) {
   while(true) {
      File entry =  dir.openNextFile();

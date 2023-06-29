@@ -305,6 +305,13 @@ public:
 		limMax = mx;
 		this->wrap = wrap;
 	}
+	void change(int delta) {
+		if (delta != 0) { 
+			value += delta;
+			if (value < limMin) value = wrap ? limMax : limMin;
+			if (value > limMax) value = wrap ? limMin : limMax;
+		}
+	}
 	void check() {
 		unsigned long now = millis();
 		//if (now - lastChange > 500)
@@ -326,9 +333,7 @@ public:
 				delta *= 5;
 			lastChange = now;
 		}
-		value += delta;
-		if (value < limMin) value = wrap ? limMax : limMin;
-		if (value > limMax) value = wrap ? limMin : limMax;
+		change(delta);
 	}
 };
 #endif 
@@ -899,18 +904,17 @@ class JimWiFi {
 		if (!enabled) 
 			return;
 
-		const struct {
-			const char *name;
-			const char *pass;
-		} aps[] = {		{"Ping-582B", ""}, 
-					{"ChloeNet", "niftyprairie7"},
-					{"MOF-Guest", ""},
-					{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
-					{"ChloeNet3", "niftyprairie7"},
-                                        {"ChloeNet4", "niftyprairie7"},
-
-					{"Team America", "51a52b5354"},  
-					{"TUK-FIRE", "FD priv n3t 20 q4"}};
+			struct {
+				const char *name;
+				const char *pass;
+			} aps[] = {	{"Ping-582B", ""}, 
+						{"ChloeNet", "niftyprairie7"},
+						//{"MOF-Guest", ""},
+						{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
+						{"ChloeNet3", "niftyprairie7"},
+						{"ChloeNet4", "niftyprairie7"},
+						{"Team America", "51a52b5354"},  
+						{"TUK-FIRE", "FD priv n3t 20 q4"} };
 
 		WiFi.disconnect(true);
 		WiFi.mode(WIFI_STA);

@@ -70,6 +70,15 @@ String Sfmt(const char *format, ...) {
 	return String(buf);
 }
 
+std::string sfmt(const char *format, ...) { 
+    va_list args;
+    va_start(args, format);
+	char buf[256];
+	vsnprintf(buf, sizeof(buf), format, args);
+    va_end(args);
+	return std::string(buf);
+}
+
 int scanI2c() { 
 	int count = 0;
 	for (byte i = 8; i < 120; i++)

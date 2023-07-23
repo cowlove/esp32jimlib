@@ -1,4 +1,4 @@
-	#ifndef _ESP32SIM_UBUNTU_H_
+#ifndef _ESP32SIM_UBUNTU_H_
 #define _ESP32SIM_UBUNTU_H_
 /* Simple library and simulation environment to compile and run an Arduino sketch as a 
  * standard C command line program. 
@@ -754,6 +754,7 @@ public:
 	bool setAutoPVT(int, int, int) { return 0; }
 	void saveConfiguration() {}
 	bool setNavigationFrequency(int) { return 0; } 
+	bool getGnssFixOk() { return true; }
 };
 
 

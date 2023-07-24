@@ -297,6 +297,40 @@ public:
 	static const struct Colors { 
 		int lf, lb, vf, vb; 
 	} defaultColors; 
+
+	static const int xsize = 40, ysize = 20;
+	char lines[ysize][xsize];
+	char invMap[ysize][xsize];
+
+	void initTextBuffer() { 
+		for(int y = 0; y < ysize; y++)  {
+			for(int x = 0; x < xsize; x++) { 
+				lines[y][x] = ' ';
+				invMap[y][x] = ' ';
+			}
+			lines[y][xsize - 1] = '\0';
+			invMap[y][xsize - 1] = '\0';
+		}
+
+	}
+	char *printAtUpdateTextBuffer(int x, int y, const char *f, int fg, int bg) { 
+		char *line = lines[y/10];
+		int flen = strlen(f);
+		for (int n = 0; n < flen; n++) { 
+			line[x/6 + n] = f[n];
+			invMap[y/10][x/6 + n] = (bg == defaultColors.lf || bg == defaultColors.vf) ? '*' : ' ';
+		}
+		return line;
+	}
+	String dump() { 
+		String rval;
+		forceUpdate();
+		for(int y = 0; y < ysize; y++)  {
+			rval += Sfmt("%s\n", lines[y]);
+			rval += Sfmt("%s\n", invMap[y]);
+		}
+		return rval;
+	}
 #ifndef UBUNTU 
 	Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 	void begin() { 
@@ -310,6 +344,7 @@ public:
 			tft.setRotation(1);
 			tft.setTextSize(textSize); 
 		}
+		initTextBuffer();
 		forceUpdate();
 		xTaskCreate(JDisplayUpdateThread, "JDisplayUpdateThread", 8192, this, tskIDLE_PRIORITY, NULL);
 	}
@@ -325,31 +360,18 @@ public:
 		tft.setCursor(x, y);
 		tft.setTextSize(size); 
 		tft.print(s);
+		printAtUpdateTextBuffer(x, y, s, fg, bg);
 	}
 	void setRotation(int n) { tft.setRotation(n); }
 #else
 	void setRotation(int) {}
-	static const int xsize = 40, ysize = 20;
-	char lines[ysize][xsize];
 	void begin() {
-		for(int y = 0; y < ysize; y++)  {
-			for(int x = 0; x < xsize; x++) { 
-				lines[y][x] = ' ';
-			}
-			lines[y][xsize - 1] = '\0';
-		}
+		initTextBuffer();
 	}
 	void clear() {}
 	static bool displayToConsole;
-	void printAt(int x, int y, const char *f, int, int, int) {
-		if (displayToConsole) {
-			char *line = lines[y/10];
-			int flen = strlen(f);
-			for (int n = 0; n < flen; n++) { 
-				line[x/6 + n] = f[n];
-			}
-			::printf("%s\n", line);
-		}
+	void printAt(int x, int y, const char *f, int fg, int bg, int size) {
+		::printf("%s\n", printAtUpdateTextBuffer(x, y, f, fg, bg));
 	}
 #endif
 	void markChange() { changeSem.give(); } 
@@ -476,7 +498,7 @@ public:
 #ifndef UBUNTU
 const JDisplay::Colors JDisplay::defaultColors = { ST7735_GREEN, ST7735_BLACK, ST7735_WHITE, ST7735_BLACK };
 #else // UBUNTU
-const JDisplay::Colors JDisplay::defaultColors = { 0, 0, 0, 0 };
+const JDisplay::Colors JDisplay::defaultColors = { 1, 2, 3, 4 };
 bool JDisplay::displayToConsole = false;
 
 class ESP32sim_jdisplay : public ESP32sim_Module {

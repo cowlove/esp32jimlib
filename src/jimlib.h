@@ -1586,8 +1586,8 @@ class CliVariable {
 #define CLI_VARIABLE_STRING(name,val) CliVariable<String> name = CliVariable<String>(j.cli, #name, val)
 
 class JStuff {		
-	bool parseSerial;
 public:
+	bool parseSerial;
 	std::function<void()> onConn = NULL;
 	LineBuffer lb;
 	bool debug = false;

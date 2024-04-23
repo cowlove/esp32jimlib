@@ -46,6 +46,7 @@ using std::to_string;
 #define GIT_VERSION "no-git-version"
 #endif
 
+
 class ESP32sim_Module {
 public:
 	ESP32sim_Module();
@@ -590,6 +591,7 @@ public:
 #define WIFI_PHY_RATE_24M 0 
 #define ESP_IF_WIFI_STA 0 
 #define WIFI_SECOND_CHAN_NONE 0 
+#define WIFI_IF_AP 0
 
 typedef enum {
     ESP_NOW_SEND_SUCCESS = 0,       /**< Send ESPNOW data successfully */
@@ -623,6 +625,7 @@ typedef void (*esp_now_send_cb_t)(const uint8_t *mac_addr, esp_now_send_status_t
 int esp_now_register_send_cb(esp_now_send_cb_t) { return ESP_OK; }
 int esp_now_register_recv_cb(esp_now_recv_cb_t) { return ESP_OK; }
 int esp_now_send(const uint8_t*, const uint8_t*, size_t) { return ESP_OK; }
+int esp_wifi_config_espnow_rate(int, int) { return ESP_OK; }
 
 #define INV_SUCCESS 1
 #define INV_XYZ_GYRO 1

@@ -6,6 +6,7 @@ using namespace std;
 #include <functional> 
 #include <cctype>
 #include <locale>
+#include "WiFiServer.h"
 
 
 // trim from start
@@ -168,40 +169,67 @@ inline void ConfPanelClient::addEnum(float *ptr, const char *l, const char *en, 
     new ConfPanelParamEnum(this, ptr, l, en, w);
 }
 
-void startServer();
+WiFiServer server(4444);
+
 class ConfPanelUdpTransport {
     vector <ConfPanelClient *> clients;
     //WiFiUDP udp;
     bool initialized = false;
 
 public:
-    AsyncClient *client = NULL;
+    WiFiClient client;
     void add(ConfPanelClient *p) { 
         clients.push_back(p);
     }
-    int ackTimeout = 0;
+    int ackTimeout = 0, tcpTimeout = 0;
     void run() { 
         string s;
         if (!initialized) { 
-           	startServer();
+           	server.begin();
             initialized = true; 
         }
-        if (ackTimeout++ > 5000 && client != NULL && client->connected()) { 
-
-            s = sfmt("ACK %d\n", (int)millis());
-            int n = client->write(s.c_str(), s.length()); 
+        if (!client.connected()) {
+            server.setTimeout(1);
+            //Serial.printf("%09d reconnecting %d\n", (int)millis(), client.connected());
+            client = server.available();
+            if (client.connected()) {
+              client.setTimeout(1);
+              Serial.printf("reconnected\n");
+              tcpTimeout = 0;
+            }
+        }
+        if (tcpTimeout++ > 15000 && client.connected()) {
+          Serial.printf("tcpTimeout\n");
+          client.stop();
+          tcpTimeout = 0;
+        }    
+        if (ackTimeout++ > 5000 && client.connected()) { 
+            s = sfmt("ACK3 %d\n", (int)millis());
+            int n = client.write(s.c_str(), s.length()); 
+            Serial.printf("write() returned %d\n", n);
+            client.flush();
+            if (n <= 0) {
+                client.stop();
+                Serial.printf("write error, closing\n");
+            }
             ackTimeout = 0;             
         }
+        s = "";
         for (auto c : clients) 
-            s += c->readData();
+            s += c->readData();    
         if (s.length() > 0) {
-          ackTimeout = 0;             
-          if (client != NULL && client->connected()) { 
-            int n = client->write(s.c_str(), s.length());              
-            //Serial.printf("wrote %d bytes\n", n);
-            if (n == 0) {
-                client->close();
-                Serial.printf("write error, closing\n");
+          vector<string> lines = split(s.c_str(), "\n");
+          for(string s2 : lines) { 
+            ackTimeout = 0;             
+            if (client.connected() && s2.length() > 0) { 
+              s2 += "\n";
+              int n = client.write(s2.c_str(), s2.length());              
+              client.flush();            
+              //Serial.printf("wrote %d bytes: %s\n", n, s2.c_str());
+              if (n <= 0) {
+                  client.stop();
+                  Serial.printf("write error, closing\n");
+              }
             }
           }
           //udp.beginPacket("255.255.255.255", 4444);
@@ -213,7 +241,14 @@ public:
         //    int n = udp.read((uint8_t *)buf, sizeof(buf));
         //    onRecv(buf, n);    
         //}   
+        while (client.connected() && client.available()) { 
+          char buf[1024];
+          int n = client.read((uint8_t *)buf, sizeof(buf));
+          onRecv(buf, n);    
+          if (n > 0) tcpTimeout = 0;
+        }
     }
+
     LineBuffer lb;
     void onRecv(const char *b, int len) { 
       lb.add((char *)b, len, [this](const char *line) { 
@@ -228,6 +263,7 @@ public:
 ConfPanelClient cpc(0);
 ConfPanelUdpTransport cup;
 
+#if 0 
 static void handleData(void* arg, AsyncClient* client, void *data, size_t len) {
 	//Serial.printf("Got %d bytes\n", len);
 	cup.onRecv((const char *)data, len);
@@ -261,10 +297,6 @@ static void handleNewClient(void* arg, AsyncClient* client) {
   client->onTimeout(&handleTimeout, NULL);
 	cup.client = client;
 }
+#endif
 
-AsyncServer *server; 
-void startServer() {
-  server = new AsyncServer(4444);
-  server->onClient(&handleNewClient, &server);
-  server->begin();
-}
+

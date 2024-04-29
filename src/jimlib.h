@@ -918,9 +918,9 @@ class JimWiFi {
 				const char *pass;
 			} aps[] = {	{"Ping-582B", ""}, 
 						{"ChloeNet", "niftyprairie7"},
+						//{"Flora2", "Maynards."},
 						//{"MOF-Guest", ""},
-						{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
-						{"ChloeNet3", "niftyprairie7"},
+						//{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
 						{"ChloeNet4", "niftyprairie7"},
 						{"Team America", "51a52b5354"},  
 						{"TUK-FIRE", "FD priv n3t 20 q4"} };
@@ -988,6 +988,9 @@ public:
 	}
 	void onOTA(std::function<void(void)> oo) { 
 		otaFunc = oo;
+	}
+	void invalidateCachedAP() { 
+		lastAP = -1;
 	}
 	void run() {
 		if (!enabled) 
@@ -1402,9 +1405,9 @@ public:
 	void setMs(int p) { set(p * 4715 / 1500); };
 	void setPercent(int p) { set(p * 65535 / 100); } 
 	void setRaw(int p) { 
-		while(gradual && pwm != -1 && pwm != p) { 
-			ledcWrite(channel, pwm);  
+		while(gradual && pwm > 0 && pwm != p && pwm < 65536 ) { 
 			pwm += pwm < p ? 1 : -1;
+			ledcWrite(channel, pwm);  
 			delayMicroseconds(gradual);
 		}
 		ledcWrite(channel, p); 
@@ -1594,12 +1597,12 @@ public:
 	CommandLineInterface cli;
 	CliVariable<int> logLevel;
 public:
-	PwmChannel led = PwmChannel(getLedPin(), 1024, 10, 0);
+	//PwmChannel led = PwmChannel(getLedPin(), 1024, 10, 2);
 	struct {
 		void run() {}
 		void setPattern(int, int) {}
 		void setPercent(int) {}
-	} ledX;
+	} led;
 	JStuff(bool ps = true) : parseSerial(ps), logLevel(cli, "logLevel", 1) {
 		cli.on("DEBUG", [this]() { 
 			jw.debug = debug = true; 

@@ -324,7 +324,7 @@ public:
 	}
 	String dump() { 
 		String rval;
-		forceUpdate();
+		//forceUpdate();
 		for(int y = 0; y < ysize; y++)  {
 			rval += Sfmt("%s\n", lines[y]);
 			rval += Sfmt("%s\n", invMap[y]);
@@ -526,6 +526,7 @@ public:
 	void add(JDisplayEditableItem *i) { 
 		items.push_back(i);
 	}
+	String dump();
 	void begin() {
 		re.limMin = 0;
 		re.limMax = items.size() - 1;
@@ -538,7 +539,10 @@ public:
 	}
 	inline void negateSelectedValue(); 
 	inline void update(); 
-	inline void buttonPress(bool longpress);			
+	inline void buttonPress(bool longpress);
+	inline void knobTurn(bool left) { 
+		re.change(left ? -1 : 1);
+	}			
 	inline void sortItems();
 };
 
@@ -604,6 +608,11 @@ inline void JDisplayEditor::sortItems() {
 	[](JDisplayEditableItem * a, JDisplayEditableItem *b) {
 		return a->x != b->x ? a->x < b->x : a->y < b->y;  
 	});
+}
+
+inline String JDisplayEditor::dump() { 
+	String r;
+	return r;
 }
 
 inline void JDisplayEditor::update() { 

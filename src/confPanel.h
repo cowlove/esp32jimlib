@@ -43,17 +43,19 @@ vector<string> split(const char *line, const char *delim) {
 
 /////////////////////////////////////
 // CLIENT CODE
-
+class ConfPanelTransportEmbedded;
 class ConfPanelParam; 
 class ConfPanelClient {
   public:
   int index;
   bool schemaRequested = false;
   vector <ConfPanelParam *> params;
-  ConfPanelClient(int i) : index(i) {}
-  inline void addFloat(float *ptr, const char *l, float i = 1,const char *f = "%.1f", 
+  ConfPanelClient(int i, ConfPanelTransportEmbedded *);
+  inline void addFloat(float *ptr, const char *l, float i = 1, const char *f = "%.1f",  
     float mi = 0, float ma = 0, bool w = false);
-  inline void addEnum(float *ptr, const char *l, const char *en, bool w = false);
+  inline void addInt(int *ptr, const char *l, float i = 1, const char *f = "%.0f",  
+    float mi = 0, float ma = 0, bool w = false);
+  inline void addEnum(int *ptr, const char *l, const char *en, bool w = false);
   int attach(ConfPanelParam *p) { 
     params.push_back(p);
     return params.size() - 1;
@@ -66,39 +68,51 @@ class ConfPanelClient {
 
 class ConfPanelParam {
   float inc, min, max, lastValue;
-  float *ptr;
+  float *fptr;
+  int *iptr;
   bool wrap;
   string label, fmt, enumlist;
   int index;
   ConfPanelClient *owner;
   public:
-  ConfPanelParam(ConfPanelClient *o, float *p, const char *l, const char *f, float i = 1, float mi = 0, float ma = 0, bool w = false, const char *el = "none") 
-    : owner(o), ptr(p), inc(i), min(mi), max(ma), wrap(w) {
+  ConfPanelParam(ConfPanelClient *o, float *fp, int *ip, const char *l, const char *f, float i = 1, float mi = 0, float ma = 0, bool w = false, const char *el = "none") 
+    : owner(o), fptr(fp), iptr(ip), inc(i), min(mi), max(ma), wrap(w) {
       enumlist = el;
       label = l;
       fmt = f; 
       index = owner->attach(this);
-      lastValue = *ptr;
+      lastValue = get();
   }
   string schemaString() { 
     char buf[256];
-    snprintf(buf, sizeof(buf), "%s, %s, %f, %f, %f, %f, %d, %s", label.c_str(), fmt.c_str(), inc, min, max, *ptr, (int)wrap, enumlist.c_str());
+    snprintf(buf, sizeof(buf), "%s, %s, %f, %f, %f, %f, %d, %s", 
+      label.c_str(), fmt.c_str(), inc, min, max, get(), (int)wrap, enumlist.c_str());
     return string(buf);
   }
   string valueString() { 
     char buf[256];
-    snprintf(buf, sizeof(buf), "VALUE %d %d %f", owner->index, index, *ptr);
+    snprintf(buf, sizeof(buf), "VALUE %d %d %f", owner->index, index, get());
     return string(buf);
   }
   string readData() { 
-    if (*ptr != lastValue) { 
-      lastValue = *ptr;
+    if (get() != lastValue) { 
+      lastValue = get();
       return valueString();
     } 
     return "";
   }
+  float get() { 
+    if (fptr != NULL) 
+      return *fptr;
+    else
+      return *iptr;
+  }
   void set(float f) {
-    lastValue = *ptr = f;
+    lastValue = f;
+    if (fptr != NULL) 
+      *fptr = f;
+    else
+      *iptr = f;
   }
 
 };
@@ -151,55 +165,69 @@ inline void ConfPanelClient::onRecv(const string &buf) {
   }
 }
 
+#if 0 
 class ConfPanelParamFloat : public ConfPanelParam { 
 public:
-  ConfPanelParamFloat(ConfPanelClient *o, float *ptr, const char *l, float i = 1,const char *f = "%.1f", float mi = 0, float ma = 0, bool w = false) : ConfPanelParam(o, ptr, l, f, i, mi, ma, w) {}
+  ConfPanelParamFloat(ConfPanelClient *o, float *ptr, const char *l, float i = 1,const char *f = "%.1f", float mi = 0, float ma = 0, bool w = false) 
+    : ConfPanelParam(o, ptr, NULL, l, f, i, mi, ma, w) {}
 };
 class ConfPanelParamEnum : public ConfPanelParam { 
 public:
-  ConfPanelParamEnum(ConfPanelClient *o, float *ptr, const char *l, const char *en, bool w = false) : ConfPanelParam(o, ptr, l, "none", 1, 0, 0, w, en) {}
+  ConfPanelParamEnum(ConfPanelClient *o, int *ptr, const char *l, const char *en, bool w = false) 
+    : ConfPanelParam(o, NULL, ptr, l, "none", 1, 0, 0, w, en) {}
 };
+#endif
 
 inline void ConfPanelClient::addFloat(float *ptr, const char *l, float i,
     const char *f, float mi, float ma, bool w) {
-    new ConfPanelParamFloat(this, ptr, l, i, f, mi, ma, w);
+    new ConfPanelParam(this, ptr, NULL, l, f, i, mi, ma, w);
+}
+inline void ConfPanelClient::addInt(int *ptr, const char *l, float i,
+    const char *f, float mi, float ma, bool w) {
+    new ConfPanelParam(this, NULL, ptr, l, f, i, mi, ma, w);
 }
 
-inline void ConfPanelClient::addEnum(float *ptr, const char *l, const char *en, bool w) {
-    new ConfPanelParamEnum(this, ptr, l, en, w);
+inline void ConfPanelClient::addEnum(int *ptr, const char *l, const char *en, bool w) {
+    new ConfPanelParam(this, NULL, ptr, l, "none", 1, 0, 0, w, en);
 }
 
 class ReliableStream { 
-  int sendTimeout = 0, readTimeout = 0; 
+  uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
 public:
   ReliableStream() {}
   ReliableStream(const char *s, uint16_t p) { begin(s, p); }
   void begin(const char *h, uint16_t p) { host = h; port = p; }
   void check() { 
-    if (!client.connected()) reconnect();
-    client.setTimeout(2);
-    if (sendTimeout++ > 3000) { // TODO convert this to ms 
-      sendTimeout = 0;
-      write("ACK\n");     // TODO figure out weird double send
+    if (!client.connected() && lastRecon - millis() > 1000) {
+      reconnect();
+      lastRecon = lastSend = lastRecv = millis();
     }
-    if (readTimeout++ > 10000) {
-      readTimeout = 0;
+    client.setTimeout(2000);
+    if (millis() - lastSend > 3000) { 
+      lastSend = millis();
+      write("ACK\n");    
+    }
+    if (millis() - lastRecv > 9000) {
+      lastRecv = millis();
       Serial.printf("ReliableStream: readTimeout, closing\n");
-      client.stop();
+      if (client.connected()) 
+        client.stop();
     }
   } 
   void write(const string &s) {
     if (s.length() > 0) { 
       check();
-      int n = client.write(s.c_str(), s.length()); 
-      client.flush();
-      if (n <= 0) {
-        client.stop();
-        Serial.printf("ReliableStream: write error, closing\n");
-      }
-      if (n > 0) 
-        sendTimeout = 0;
-      Serial.printf("SEND >>>> %s\n", s.c_str()); 
+      if (client.connected()) { 
+        int n = client.write(s.c_str(), s.length()); 
+        client.flush();
+        if (n <= 0) {
+          client.stop();
+          Serial.printf("ReliableStream: write error, closing\n");
+        }
+        if (n > 0) 
+          lastSend = millis();
+        //Serial.printf("SEND >>>> %s\n", s.c_str());
+      } 
     }             
   }
   string read() { 
@@ -215,8 +243,8 @@ public:
       int n = client.read((uint8_t *)buf, sizeof(buf));
       s.assign(buf, n);    
       if (n > 0) {
-        readTimeout = 0;
-        Serial.printf("RECV <<<< %s\n", s.c_str()); 
+        lastRecv = millis();
+        //Serial.printf("RECV <<<< %s\n", s.c_str()); 
       }
       if (n <= 0) {
         Serial.printf("ReliableStream: read error, closing\n");
@@ -259,7 +287,7 @@ public:
   ReliableTcpClient(const char *h, uint16_t p) : ReliableStream(h, p) {}
   void reconnect() {
     if (!client.connected()) {
-      client.connect(host.c_str(), port);
+      client.connect(host.c_str(), port, 10);
       if (client.connected()) { 
         Serial.printf("ReliableTcpClient: connected\n");
       }
@@ -267,43 +295,45 @@ public:
   }
 };
 
-
-ReliableTcpServer server(4444);
-//ReliableTcpClient client("192.168.4.1", 4444);
-
-
-class ConfPanelUdpTransport {
-    vector <ConfPanelClient *> clients;
-    //WiFiUDP udp;
-    bool initialized = false;
-
+class ConfPanelTransportEmbedded {
+  uint32_t lastBroadcast = 0;
+  WiFiUDP udp;
+  bool intialized = false;
+  ReliableStream *stream;
 public:
-    void add(ConfPanelClient *p) { 
-        clients.push_back(p);
-    }
-    void run() {
-        string s;
-        for (auto c : clients) 
-            s += c->readData();    
-        if (s.length() > 0) {
-          server.write(s);
-        }
-        while (server.read(s)) { 
-          onRecv(s.c_str(), s.length());    
-        }
-    }
+  vector <ConfPanelClient *> clients;
+  ConfPanelTransportEmbedded(ReliableStream *s) : stream(s) {}
+  void add(ConfPanelClient *p) { 
+      clients.push_back(p);
+  }
+  void run() {
+      string s;
+      for (auto c : clients) 
+          s += c->readData();    
+      if (s.length() > 0) {
+        stream->write(s);
+      }
+      while (stream->read(s)) { 
+        onRecv(s.c_str(), s.length());    
+      }
+      if (millis() - lastBroadcast > 2000) { 
+        string s = WiFi.localIP().toString().c_str();
+        int n = udp.beginPacket("255.255.255.255", 4444);
+        n = udp.write((uint8_t *)s.c_str(), s.length());
+        udp.endPacket();
+        lastBroadcast = millis();
+      }
+  }
 
-    LineBuffer lb;
-    void onRecv(const char *b, int len) { 
-      lb.add((char *)b, len, [this](const char *line) {
-        for (auto p : clients) { 
-          p->onRecv(line);
-        }
-    }); 
+  LineBuffer lb;
+  void onRecv(const char *b, int len) { 
+    lb.add((char *)b, len, [this](const char *line) {
+      for (auto p : clients) { 
+        p->onRecv(line);
+      }
+  }); 
 
-    }
+  }
 };
 
-ConfPanelClient cpc(0);
-ConfPanelUdpTransport cup;
-
+inline ConfPanelClient::ConfPanelClient(int i, ConfPanelTransportEmbedded *t) : index(i) { t->add(this); }

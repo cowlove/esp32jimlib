@@ -173,8 +173,8 @@ class ReliableStream {
   int sendTimeout = 0, readTimeout = 0; 
 public:
   ReliableStream() {}
-  ReliableStream(const string &s, uint16_t p) { begin(s, p); }
-  void begin(const string &h, uint16_t p) { host = h; port = p; }
+  ReliableStream(const char *s, uint16_t p) { begin(s, p); }
+  void begin(const char *h, uint16_t p) { host = h; port = p; }
   void check() { 
     if (!client.connected()) reconnect();
     client.setTimeout(2);
@@ -238,7 +238,7 @@ protected:
 class ReliableTcpServer : public ReliableStream {
 public: 
   ReliableTcpServer() {}
-  ReliableTcpServer(uint16_t p) : ReliableStream(string(), p) {}
+  ReliableTcpServer(uint16_t p) : ReliableStream("", p) {}
   WiFiServer server;
   void reconnect() {
     if (!initialized) {
@@ -255,15 +255,22 @@ public:
 };
 
 class ReliableTcpClient : public ReliableStream {
+public:
+  ReliableTcpClient(const char *h, uint16_t p) : ReliableStream(h, p) {}
   void reconnect() {
     if (!client.connected()) {
       client.connect(host.c_str(), port);
+      if (client.connected()) { 
+        Serial.printf("ReliableTcpClient: connected\n");
+      }
     }
   }
 };
 
 
 ReliableTcpServer server(4444);
+//ReliableTcpClient client("192.168.4.1", 4444);
+
 
 class ConfPanelUdpTransport {
     vector <ConfPanelClient *> clients;
@@ -279,13 +286,6 @@ public:
         for (auto c : clients) 
             s += c->readData();    
         if (s.length() > 0) {
-#if 0 
-          vector<string> lines = split(s.c_str(), "\n");
-          for(string s2 : lines) {
-            s2 += "\n";
-            server.write(s2); 
-          }
-#endif
           server.write(s);
         }
         while (server.read(s)) { 

@@ -202,7 +202,7 @@ public:
       reconnect();
       lastRecon = lastSend = lastRecv = millis();
     }
-    client.setTimeout(2000);
+    client.setTimeout(6000);
     if (millis() - lastSend > 3000) { 
       lastSend = millis();
       write("ACK\n");    
@@ -287,7 +287,7 @@ public:
   ReliableTcpClient(const char *h, uint16_t p) : ReliableStream(h, p) {}
   void reconnect() {
     if (!client.connected()) {
-      client.connect(host.c_str(), port, 10);
+      client.connect(host.c_str(), port, 10000);
       if (client.connected()) { 
         Serial.printf("ReliableTcpClient: connected\n");
       }

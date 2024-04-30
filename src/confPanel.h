@@ -169,7 +169,101 @@ inline void ConfPanelClient::addEnum(float *ptr, const char *l, const char *en, 
     new ConfPanelParamEnum(this, ptr, l, en, w);
 }
 
-WiFiServer server(4444);
+class ReliableStream { 
+  int sendTimeout = 0, readTimeout = 0; 
+public:
+  ReliableStream() {}
+  ReliableStream(const string &s, uint16_t p) { begin(s, p); }
+  void begin(const string &h, uint16_t p) { host = h; port = p; }
+  void check() { 
+    if (!client.connected()) reconnect();
+    client.setTimeout(2);
+    if (sendTimeout++ > 3000) { // TODO convert this to ms 
+      sendTimeout = 0;
+      write("ACK\n");     // TODO figure out weird double send
+    }
+    if (readTimeout++ > 10000) {
+      readTimeout = 0;
+      Serial.printf("ReliableStream: readTimeout, closing\n");
+      client.stop();
+    }
+  } 
+  void write(const string &s) {
+    if (s.length() > 0) { 
+      check();
+      int n = client.write(s.c_str(), s.length()); 
+      client.flush();
+      if (n <= 0) {
+        client.stop();
+        Serial.printf("ReliableStream: write error, closing\n");
+      }
+      if (n > 0) 
+        sendTimeout = 0;
+      Serial.printf("SEND >>>> %s\n", s.c_str()); 
+    }             
+  }
+  string read() { 
+    string s;
+    read(s);
+    return s;
+  }
+  int read(string &s) {
+    char buf[1024];
+    s = "";
+    check(); 
+    if (client.connected() && client.available()) { 
+      int n = client.read((uint8_t *)buf, sizeof(buf));
+      s.assign(buf, n);    
+      if (n > 0) {
+        readTimeout = 0;
+        Serial.printf("RECV <<<< %s\n", s.c_str()); 
+      }
+      if (n <= 0) {
+        Serial.printf("ReliableStream: read error, closing\n");
+        client.stop();
+      }
+    }
+    return s.length(); 
+  }
+  bool readLine(string &d) { return false; }
+protected:
+  bool initialized = false;
+  WiFiClient client;
+  string host;
+  uint16_t port; 
+
+  virtual void reconnect() = 0;
+};
+
+class ReliableTcpServer : public ReliableStream {
+public: 
+  ReliableTcpServer() {}
+  ReliableTcpServer(uint16_t p) : ReliableStream(string(), p) {}
+  WiFiServer server;
+  void reconnect() {
+    if (!initialized) {
+      server.begin(port);
+      initialized = true;
+    }
+    if (!client.connected()) {
+      client = server.available();
+      if (client.connected()) { 
+        Serial.printf("ReliableTcpServer: connected\n");
+      }
+    }
+  }
+};
+
+class ReliableTcpClient : public ReliableStream {
+  void reconnect() {
+    if (!client.connected()) {
+      client.connect(host.c_str(), port);
+    }
+  }
+};
+
+
+ReliableTcpServer server(4444);
 
 class ConfPanelUdpTransport {
     vector <ConfPanelClient *> clients;
@@ -177,81 +271,31 @@ class ConfPanelUdpTransport {
     bool initialized = false;
 
 public:
-    WiFiClient client;
     void add(ConfPanelClient *p) { 
         clients.push_back(p);
     }
-    int ackTimeout = 0, tcpTimeout = 0;
-    void run() { 
+    void run() {
         string s;
-        if (!initialized) { 
-           	server.begin();
-            initialized = true; 
-        }
-        if (!client.connected()) {
-            server.setTimeout(1);
-            //Serial.printf("%09d reconnecting %d\n", (int)millis(), client.connected());
-            client = server.available();
-            if (client.connected()) {
-              client.setTimeout(1);
-              Serial.printf("reconnected\n");
-              tcpTimeout = 0;
-            }
-        }
-        if (tcpTimeout++ > 15000 && client.connected()) {
-          Serial.printf("tcpTimeout\n");
-          client.stop();
-          tcpTimeout = 0;
-        }    
-        if (ackTimeout++ > 5000 && client.connected()) { 
-            s = sfmt("ACK3 %d\n", (int)millis());
-            int n = client.write(s.c_str(), s.length()); 
-            Serial.printf("write() returned %d\n", n);
-            client.flush();
-            if (n <= 0) {
-                client.stop();
-                Serial.printf("write error, closing\n");
-            }
-            ackTimeout = 0;             
-        }
-        s = "";
         for (auto c : clients) 
             s += c->readData();    
         if (s.length() > 0) {
+#if 0 
           vector<string> lines = split(s.c_str(), "\n");
-          for(string s2 : lines) { 
-            ackTimeout = 0;             
-            if (client.connected() && s2.length() > 0) { 
-              s2 += "\n";
-              int n = client.write(s2.c_str(), s2.length());              
-              client.flush();            
-              //Serial.printf("wrote %d bytes: %s\n", n, s2.c_str());
-              if (n <= 0) {
-                  client.stop();
-                  Serial.printf("write error, closing\n");
-              }
-            }
+          for(string s2 : lines) {
+            s2 += "\n";
+            server.write(s2); 
           }
-          //udp.beginPacket("255.255.255.255", 4444);
-          //udp.write((uint8_t *)s2.c_str(), s2.length());
-          //udp.endPacket();
+#endif
+          server.write(s);
         }
-        //if (udp.parsePacket() > 0) {
-        //    char buf[1024];
-        //    int n = udp.read((uint8_t *)buf, sizeof(buf));
-        //    onRecv(buf, n);    
-        //}   
-        while (client.connected() && client.available()) { 
-          char buf[1024];
-          int n = client.read((uint8_t *)buf, sizeof(buf));
-          onRecv(buf, n);    
-          if (n > 0) tcpTimeout = 0;
+        while (server.read(s)) { 
+          onRecv(s.c_str(), s.length());    
         }
     }
 
     LineBuffer lb;
     void onRecv(const char *b, int len) { 
-      lb.add((char *)b, len, [this](const char *line) { 
+      lb.add((char *)b, len, [this](const char *line) {
         for (auto p : clients) { 
           p->onRecv(line);
         }
@@ -262,41 +306,4 @@ public:
 
 ConfPanelClient cpc(0);
 ConfPanelUdpTransport cup;
-
-#if 0 
-static void handleData(void* arg, AsyncClient* client, void *data, size_t len) {
-	//Serial.printf("Got %d bytes\n", len);
-	cup.onRecv((const char *)data, len);
-}
-
-static void handleError(void* arg, AsyncClient* client, uint8_t err) {
-	Serial.printf("Got err %s\n", client->errorToString(err));
-  client->close();
-	cup.client = NULL;
-}
-
-static void handleTimeout(void* arg, AsyncClient* client, uint32_t t) {
-	Serial.printf("Got timeout %d\n", t);
-  client->close();
-	cup.client = NULL;
-}
-
-static void handleDisconnect(void* arg, AsyncClient* client) {
-	Serial.printf("handleDisconnect()\n");
-  client->close();
-	cup.client = NULL;
-}
-static void handleNewClient(void* arg, AsyncClient* client) {
-	Serial.printf("handleNewClient()\n");
-
-	//client->setRxTimeout(2000);
-  //client->setAckTimeout(2000);
-  client->onData(&handleData, NULL);
-  client->onError(&handleError, NULL);
-  client->onDisconnect(&handleDisconnect, NULL);
-  client->onTimeout(&handleTimeout, NULL);
-	cup.client = client;
-}
-#endif
-
 

@@ -328,7 +328,7 @@ public:
     size_t sent = 0;
     while(sent < n) { 
       // throttle espNOW for reliability
-      while(millis() - lastSend < 20) delay(1);
+      while(millis() - lastSend < 19) delay(1);
       int pl = min((size_t)200, n - sent);
       esp_now_send(broadcastAddress, (uint8_t *)buf + sent, pl);
       sent += pl;

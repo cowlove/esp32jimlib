@@ -7,6 +7,9 @@ using namespace std;
 #include <cctype>
 #include <locale>
 #include "WiFiServer.h"
+#include <esp_now.h>
+#include <esp_wifi.h>
+#include <esp_private/wifi.h>
 
 
 // trim from start
@@ -191,29 +194,21 @@ inline void ConfPanelClient::addEnum(int *ptr, const char *l, const char *en, bo
     new ConfPanelParam(this, NULL, ptr, l, "none", 1, 0, 0, w, en);
 }
 
-class ReliableStream { 
+class ReliableStreamInterface {
+public:
+  virtual int read(string &) = 0;
+  virtual void write(const string &) = 0;
+  void begin(const char *h, uint16_t p) { host = h; port = p; }
+protected:
+  string host;
+  uint16_t port; 
+};
+template<class T>
+class ReliableStream : public ReliableStreamInterface { 
   uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
 public:
   ReliableStream() {}
   ReliableStream(const char *s, uint16_t p) { begin(s, p); }
-  void begin(const char *h, uint16_t p) { host = h; port = p; }
-  void check() { 
-    if (!client.connected() && lastRecon - millis() > 1000) {
-      reconnect();
-      lastRecon = lastSend = lastRecv = millis();
-    }
-    client.setTimeout(6000);
-    if (millis() - lastSend > 3000) { 
-      lastSend = millis();
-      write("ACK\n");    
-    }
-    if (millis() - lastRecv > 9000) {
-      lastRecv = millis();
-      Serial.printf("ReliableStream: readTimeout, closing\n");
-      if (client.connected()) 
-        client.stop();
-    }
-  } 
   void write(const string &s) {
     if (s.length() > 0) { 
       check();
@@ -226,7 +221,7 @@ public:
         }
         if (n > 0) 
           lastSend = millis();
-        //Serial.printf("SEND >>>> %s\n", s.c_str());
+        Serial.printf("SEND >>>> %s\n", s.c_str());
       } 
     }             
   }
@@ -244,7 +239,7 @@ public:
       s.assign(buf, n);    
       if (n > 0) {
         lastRecv = millis();
-        //Serial.printf("RECV <<<< %s\n", s.c_str()); 
+        Serial.printf("RECV <<<< %s\n", s.c_str()); 
       }
       if (n <= 0) {
         Serial.printf("ReliableStream: read error, closing\n");
@@ -253,17 +248,30 @@ public:
     }
     return s.length(); 
   }
-  bool readLine(string &d) { return false; }
 protected:
+  void check() { 
+    if (!client.connected() && lastRecon - millis() > 1000) {
+      reconnect();
+      lastRecon = lastSend = lastRecv = millis();
+    }
+    client.setTimeout(6000);
+    if (millis() - lastSend > 3000) { 
+      lastSend = millis();
+      write("ACK\n");    
+    }
+    if (millis() - lastRecv > 9000) {
+      lastRecv = millis();
+      Serial.printf("ReliableStream: readTimeout, closing\n");
+      if (client.connected()) 
+        client.stop();
+    }
+  } 
   bool initialized = false;
-  WiFiClient client;
-  string host;
-  uint16_t port; 
-
+  T client;
   virtual void reconnect() = 0;
 };
 
-class ReliableTcpServer : public ReliableStream {
+class ReliableTcpServer : public ReliableStream<WiFiClient> {
 public: 
   ReliableTcpServer() {}
   ReliableTcpServer(uint16_t p) : ReliableStream("", p) {}
@@ -282,7 +290,7 @@ public:
   }
 };
 
-class ReliableTcpClient : public ReliableStream {
+class ReliableTcpClient : public ReliableStream<WiFiClient> {
 public:
   ReliableTcpClient(const char *h, uint16_t p) : ReliableStream(h, p) {}
   void reconnect() {
@@ -295,14 +303,58 @@ public:
   }
 };
 
+void ESPNowClientOnDataRecv(const uint8_t * mac, const uint8_t *in, int len);
+
+class ESPNowClient {
+  esp_now_peer_info_t peerInfo;
+  uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+  string buf;
+  bool initialized = false;
+public:
+  int read(char *buf, int) { return 0; }
+  int write(char *buf, int n) { 
+    esp_now_send(broadcastAddress, (uint8_t *) buf, n);
+  }
+  bool connected() { return initialized; } 
+  void connect() {
+    if (!initialized) { 
+      while(!WiFi.isConnected()) { 
+        delay(100);
+      }
+      esp_now_init();
+      esp_now_register_recv_cb(ESPNowClientOnDataRecv);
+      memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+      peerInfo.channel = WiFi.channel();  
+      peerInfo.encrypt = false;
+      esp_now_add_peer(&peerInfo);
+    }
+  }
+  int available() { return buf.length(); }
+  void flush(); 
+  void stop();
+  static ESPNowClient *Instance;
+  void onRecv(const uint8_t * mac, const uint8_t *in, int len) {
+    Serial.printf("ESPNowClient::onRecv() %d bytes\n", len);
+  }
+};
+
+ESPNowClient *ESPNowClient::Instance = NULL;
+void ESPNowClientOnDataRecv(const uint8_t * mac, const uint8_t *in, int len) { 
+   ESPNowClient::Instance->onRecv(mac, in, len);
+}
+
+class ReliableStreamESPNow : public ReliableStream<ESPNowClient> {
+  void reconnect() { client.connect(); }
+};
+
 class ConfPanelTransportEmbedded {
   uint32_t lastBroadcast = 0;
   WiFiUDP udp;
   bool intialized = false;
-  ReliableStream *stream;
+  ReliableStreamInterface *stream;
 public:
   vector <ConfPanelClient *> clients;
-  ConfPanelTransportEmbedded(ReliableStream *s) : stream(s) {}
+  ConfPanelTransportEmbedded(ReliableStreamInterface *s) : stream(s) {}
   void add(ConfPanelClient *p) { 
       clients.push_back(p);
   }

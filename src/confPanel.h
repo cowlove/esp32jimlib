@@ -122,7 +122,7 @@ class ConfPanelParam {
 
 inline string ConfPanelClient::schema() {
   char buf[32];
-  snprintf(buf, sizeof(buf), "SCHEMA %d\n", index); 
+  snprintf(buf, sizeof(buf), "SCHEMA %d %d\n", index, params.size()); 
   string rval = buf;
   for(auto i = params.begin(); i != params.end(); i++) { 
     rval += (*i)->schemaString() + "\n";
@@ -203,6 +203,7 @@ protected:
   string host;
   uint16_t port; 
 };
+
 template<class T>
 class ReliableStream : public ReliableStreamInterface { 
   uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
@@ -213,7 +214,7 @@ public:
     if (s.length() > 0) { 
       check();
       if (client.connected()) { 
-        int n = client.write(s.c_str(), s.length()); 
+        int n = client.write((uint8_t *)s.c_str(), s.length()); 
         client.flush();
         if (n <= 0) {
           client.stop();
@@ -221,7 +222,7 @@ public:
         }
         if (n > 0) 
           lastSend = millis();
-        Serial.printf("SEND >>>> %s\n", s.c_str());
+        //Serial.printf("SEND >>>> %s\n", s.c_str());
       } 
     }             
   }
@@ -239,7 +240,7 @@ public:
       s.assign(buf, n);    
       if (n > 0) {
         lastRecv = millis();
-        Serial.printf("RECV <<<< %s\n", s.c_str()); 
+        //Serial.printf("RECV <<<< %s\n", s.c_str()); 
       }
       if (n <= 0) {
         Serial.printf("ReliableStream: read error, closing\n");
@@ -310,31 +311,65 @@ class ESPNowClient {
   uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
   string buf;
   bool initialized = false;
+  SemaphoreHandle_t mutex;
 public:
-  int read(char *buf, int) { return 0; }
-  int write(char *buf, int n) { 
-    esp_now_send(broadcastAddress, (uint8_t *) buf, n);
+  ESPNowClient() { Instance = this; }
+  int read(uint8_t *out, size_t n) {
+    xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
+    int r = min(n, buf.length());
+    memcpy(out, buf.c_str(), r);
+    buf.erase(0, r);
+    xSemaphoreGive(mutex);
+    return r;
+   }
+  uint32_t lastSend = 0;
+  int write(const uint8_t *buf, size_t n) { 
+    //Serial.printf("ESPNowClient::write(%d)\n", n);
+    size_t sent = 0;
+    while(sent < n) { 
+      // throttle espNOW for reliability
+      while(millis() - lastSend < 20) delay(1);
+      int pl = min((size_t)200, n - sent);
+      esp_now_send(broadcastAddress, (uint8_t *)buf + sent, pl);
+      sent += pl;
+      lastSend = millis();
+    } 
+    //Serial.printf("ESPNowClient::write() done\n");
+    //delay(1);
+    return n;
   }
   bool connected() { return initialized; } 
   void connect() {
     if (!initialized) { 
-      while(!WiFi.isConnected()) { 
-        delay(100);
-      }
+      int chan = WiFi.channel();
+      chan = 4;
+      mutex = xSemaphoreCreateMutex();
+      WiFi.mode(WIFI_STA);
+      esp_wifi_start();
+      esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
       esp_now_init();
       esp_now_register_recv_cb(ESPNowClientOnDataRecv);
       memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-      peerInfo.channel = WiFi.channel();  
+      peerInfo.channel = chan;  
       peerInfo.encrypt = false;
       esp_now_add_peer(&peerInfo);
+      initialized = true;
     }
   }
   int available() { return buf.length(); }
-  void flush(); 
-  void stop();
+  void flush() {}
+  void stop() {}
+  void setTimeout(int) {}
   static ESPNowClient *Instance;
+  uint8_t recvBuf[1024];
+  int recvBufBytes = 0;
   void onRecv(const uint8_t * mac, const uint8_t *in, int len) {
-    Serial.printf("ESPNowClient::onRecv() %d bytes\n", len);
+    xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
+    string s;
+    s.assign((const char *)in, len);
+    buf += s;
+    //Serial.printf("onRecv() %d %d\n", len, buf.length());
+    xSemaphoreGive(mutex);
   }
 };
 

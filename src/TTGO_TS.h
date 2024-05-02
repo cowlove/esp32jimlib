@@ -2,7 +2,7 @@
 #define TTGO_TS_H
 #include "jimlib.h"
 
-//#define File ext::File
+#define File ext::File
 
 // mutex to serialize SD card and TFT writes. 
 Mutex mutexSPI;

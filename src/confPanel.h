@@ -342,7 +342,8 @@ public:
   void connect() {
     if (!initialized) { 
       int chan = WiFi.channel();
-      chan = 4;
+      Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
+      //chan = 4;
       mutex = xSemaphoreCreateMutex();
       WiFi.mode(WIFI_STA);
       esp_wifi_start();

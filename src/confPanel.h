@@ -341,7 +341,17 @@ public:
   bool connected() { return initialized; } 
   void connect() {
     if (!initialized) { 
+
       int chan = WiFi.channel();
+      if (false && !WiFi.isConnected()) { 
+        chan = 4;
+        esp_wifi_stop();
+        esp_wifi_deinit();
+        wifi_init_config_t my_config = WIFI_INIT_CONFIG_DEFAULT();
+        my_config.ampdu_tx_enable = 0;
+        esp_wifi_init(&my_config);
+        esp_wifi_start(); 
+      }
       Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
       //chan = 4;
       mutex = xSemaphoreCreateMutex();

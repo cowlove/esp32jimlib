@@ -921,6 +921,7 @@ class JimWiFi {
 						//{"Flora2", "Maynards."},
 						//{"MOF-Guest", ""},
 						//{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
+						{"trex","Maeby1989!"},
 						{"ChloeNet3", "niftyprairie7"},
 						{"Tip of the Spear", "51a52b5354"},  
 						{"Team America", "51a52b5354"},  

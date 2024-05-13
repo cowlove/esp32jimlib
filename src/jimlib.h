@@ -928,17 +928,20 @@ class JimWiFi {
 						{"Station 54", "Local1747"},
 						{"TUK-FIRE", "FD priv n3t 20 q4"} };
 
-		WiFi.disconnect(true);
-		WiFi.mode(WIFI_STA);
+		//WiFi.disconnect(true);
+		//WiFi.mode(WIFI_STA);
 		WiFi.setSleep(false);
+		//delay(100);
 
 		int bestMatch = lastAP;
 		if (bestMatch >= 0 && bestMatch < (sizeof(aps)/sizeof(aps[0]))) { 
 			Serial.printf("Trying cached WiFi AP '%s'...\n", aps[bestMatch].name);
 			WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
 			for(int d = 0; d < 80; d++) { 
-				if (WiFi.status() == WL_CONNECTED) 
+				if (WiFi.status() == WL_CONNECTED) {
+					Serial.printf("Connected\n");
 					return;
+				}
 				delay(100);
 			}
 		}
@@ -946,8 +949,9 @@ class JimWiFi {
 
 		Serial.println("Scanning...");
 		WiFi.disconnect(true);
-		WiFi.mode(WIFI_STA);
+		//WiFi.mode(WIFI_STA);
 		WiFi.setSleep(false);
+		//delay(1000);
 		int n = WiFi.scanNetworks();
 		Serial.println("scan done");
 		
@@ -971,13 +975,21 @@ class JimWiFi {
 		if (bestMatch == -1) {
 			bestMatch = 0;
 		}
+		WiFi.scanDelete();
 		Serial.printf("Using WiFi AP '%s'...\n", aps[bestMatch].name);
-		WiFi.disconnect(true);
-		WiFi.mode(WIFI_STA);
-		WiFi.setSleep(false);
+		//WiFi.disconnect(true);
+		//WiFi.mode(WIFI_STA);
+		//WiFi.setSleep(false);
 		delay(100);
 		WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
-		lastAP = bestMatch;
+		for(int d = 0; d < 80; d++) { 
+			if (WiFi.status() == WL_CONNECTED) {
+				Serial.printf("Connected\n");
+				lastAP = bestMatch;
+				return;
+			}
+			delay(100);
+		}
 	}
 public:
     bool updateInProgress = false;
@@ -1003,10 +1015,9 @@ public:
 			autoConnect();			
 			firstRun = false;
 		}
-		if (connCheck.tick() && WiFi.status() != WL_CONNECTED) {
+		if (firstConnect == false && connCheck.tick() && WiFi.status() != WL_CONNECTED) {
 			WiFi.disconnect();
 			WiFi.reconnect();
-			firstRun = false;
 		}
 		if (WiFi.status() == WL_CONNECTED) { 
 			if (firstConnect ==  true) { 
@@ -1594,6 +1605,7 @@ class CliVariable {
 class JStuff {		
 public:
 	bool parseSerial;
+	bool beginRan = false;
 	std::function<void()> onConn = NULL;
 	LineBuffer lb;
 	bool debug = false;
@@ -1627,6 +1639,8 @@ public:
 	JimWiFi jw;
 	MQTTClient mqtt = MQTTClient("192.168.5.1", basename_strip_ext(__BASE_FILE__).c_str());
 	void run() { 
+		if (beginRan == false)
+			begin();
 		lastRun = thisRun;
 		thisRun = micros();
 		forceTicksNow = false;
@@ -1644,11 +1658,12 @@ public:
 		}
 	}
 	void begin() { 
+		beginRan = true;
 		esp_task_wdt_init(60, true);
 		esp_task_wdt_add(NULL);
 
 		Serial.begin(921600, SERIAL_8N1);
-		Serial.println(__BASE_FILE__ " " GIT_VERSION " " __DATE__ " " __TIME__);
+		Serial.printf("\n************************\n\n\n %s " GIT_VERSION " " __DATE__ " " __TIME__ "\n", basename_strip_ext(__BASE_FILE__));
 		getLedPin();
 
 		led.setPercent(30);
@@ -1658,8 +1673,8 @@ public:
 				jw.debug = mqtt.active = true;  
 				out("JStuff: forcing debug and mqtt.active due to WiFi network");
  			}
-			Serial.printf("Connected to AP '%s' in %dms, IP=%s\n",
-				WiFi.SSID().c_str(), millis(), WiFi.localIP().toString().c_str());
+			Serial.printf("Connected to AP '%s' in %dms, IP=%s, channel=%d\n",
+				WiFi.SSID().c_str(), millis(), WiFi.localIP().toString().c_str(), WiFi.channel());
 			if (onConn != NULL) { 
 				onConn();
 			}

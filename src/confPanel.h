@@ -312,6 +312,7 @@ class ESPNowClient {
   string buf;
   bool initialized = false;
   SemaphoreHandle_t mutex;
+  int defaultChannel = 3;
 public:
   ESPNowClient() { Instance = this; }
   int read(uint8_t *out, size_t n) {
@@ -343,8 +344,8 @@ public:
     if (!initialized) { 
 
       int chan = WiFi.channel();
-      if (false && !WiFi.isConnected()) { 
-        chan = 4;
+      if (!WiFi.isConnected()) { 
+        chan = defaultChannel;
         esp_wifi_stop();
         esp_wifi_deinit();
         wifi_init_config_t my_config = WIFI_INIT_CONFIG_DEFAULT();
@@ -353,7 +354,6 @@ public:
         esp_wifi_start(); 
       }
       Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
-      //chan = 4;
       mutex = xSemaphoreCreateMutex();
       WiFi.mode(WIFI_STA);
       esp_wifi_start();

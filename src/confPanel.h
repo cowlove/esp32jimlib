@@ -206,8 +206,8 @@ public:
         int n = client.write((uint8_t *)s.c_str(), s.length()); 
         client.flush();
         if (n <= 0) {
-          client.stop();
           Serial.printf("ReliableStream: write error, closing\n");
+          client.stop();
         }
         if (n > 0) 
           lastSend = millis();
@@ -251,7 +251,7 @@ protected:
     }
     if (millis() - lastRecv > 9000) {
       lastRecv = millis();
-      //Serial.printf("ReliableStream: readTimeout, closing\n");
+      Serial.printf("ReliableStream: readTimeout, closing\n");
       if (client.connected()) 
         client.stop();
     }
@@ -325,7 +325,7 @@ public:
   }
   int available() { return buf.length(); }
   void flush() {}
-  void stop() {}
+  void stop() {  espNowMux.stop(); }
   void setTimeout(int) {}
   void onRecv(const uint8_t * mac, const uint8_t *in, int len) {
     xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);

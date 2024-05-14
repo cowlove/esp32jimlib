@@ -20,6 +20,14 @@ class ESPNowMux {
   uint32_t lastSend = 0;
 public:
   ESPNowMux() { Instance = this; }
+  void stop() { 
+    initialized = false;
+    for(auto i = callbacks.begin(); i != callbacks.end(); i++) { 
+        i->dataReceived = false;
+        memcpy(i->peerInfo.peer_addr, broadcastAddress, sizeof(broadcastAddress));
+    }
+    esp_now_deinit();
+  }
   void check() {
     if (!initialized) { 
       int chan = WiFi.channel();
@@ -36,6 +44,7 @@ public:
       WiFi.mode(WIFI_STA);
       esp_wifi_start();
       esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
+      esp_now_deinit();
       esp_now_init();
       esp_now_register_recv_cb(ESPNowMuxOnRecv);
       memcpy(broadcastPeerInfo.peer_addr, broadcastAddress, sizeof(broadcastAddress));

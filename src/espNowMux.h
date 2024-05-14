@@ -86,8 +86,10 @@ public:
       memcpy(txBuf, prefix, strlen(prefix));
       memcpy(txBuf + strlen(prefix), buf + sent, pl);
       int r = esp_now_send(mac, txBuf, pl + strlen(prefix));
-      //Serial.printf("esp_now_send(%02x:%02x:%02x:%02x:%02x:%02x,%d) returned %d\n", 
-      //mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], pl + strlen(prefix), r);
+      if (r != 0) {
+        Serial.printf("esp_now_send(%02x:%02x:%02x:%02x:%02x:%02x, %d) error %d\n", 
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], pl + strlen(prefix), r);
+      }
       sent += pl;
       lastSend = millis();
     } 

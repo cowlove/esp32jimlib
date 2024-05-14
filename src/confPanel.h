@@ -1,17 +1,6 @@
 #include <string>
 #include <vector>
 
-using namespace std;
-#include <algorithm> 
-#include <functional> 
-#include <cctype>
-#include <locale>
-#include "WiFiServer.h"
-#include <esp_now.h>
-#include <esp_wifi.h>
-#include <esp_private/wifi.h>
-
-
 // trim from start
 inline std::string &ltrim(std::string &s) {
     s.erase(s.begin(), std::find_if(s.begin(), s.end(),
@@ -262,7 +251,7 @@ protected:
     }
     if (millis() - lastRecv > 9000) {
       lastRecv = millis();
-      Serial.printf("ReliableStream: readTimeout, closing\n");
+      //Serial.printf("ReliableStream: readTimeout, closing\n");
       if (client.connected()) 
         client.stop();
     }
@@ -304,17 +293,13 @@ public:
   }
 };
 
-void ESPNowClientOnDataRecv(const uint8_t * mac, const uint8_t *in, int len);
 
 class ESPNowClient {
-  esp_now_peer_info_t peerInfo;
-  uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
   string buf;
-  bool initialized = false;
   SemaphoreHandle_t mutex;
-  int defaultChannel = 3;
+  bool initialized = false;
+  const char *prefix = "prefix";
 public:
-  ESPNowClient() { Instance = this; }
   int read(uint8_t *out, size_t n) {
     xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
     int r = min(n, buf.length());
@@ -322,48 +307,19 @@ public:
     buf.erase(0, r);
     xSemaphoreGive(mutex);
     return r;
-   }
+  }
   uint32_t lastSend = 0;
   int write(const uint8_t *buf, size_t n) { 
-    //Serial.printf("ESPNowClient::write(%d)\n", n);
-    size_t sent = 0;
-    while(sent < n) { 
-      // throttle espNOW for reliability
-      while(millis() - lastSend < 19) delay(1);
-      int pl = min((size_t)200, n - sent);
-      esp_now_send(broadcastAddress, (uint8_t *)buf + sent, pl);
-      sent += pl;
-      lastSend = millis();
-    } 
-    //Serial.printf("ESPNowClient::write() done\n");
-    //delay(1);
+    espNowMux.send(prefix, buf, n);
     return n;
   }
   bool connected() { return initialized; } 
   void connect() {
-    if (!initialized) { 
-
-      int chan = WiFi.channel();
-      if (!WiFi.isConnected()) { 
-        chan = defaultChannel;
-        esp_wifi_stop();
-        esp_wifi_deinit();
-        wifi_init_config_t my_config = WIFI_INIT_CONFIG_DEFAULT();
-        my_config.ampdu_tx_enable = 0;
-        esp_wifi_init(&my_config);
-        esp_wifi_start(); 
-      }
-      Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
+    if(!initialized) { 
       mutex = xSemaphoreCreateMutex();
-      WiFi.mode(WIFI_STA);
-      esp_wifi_start();
-      esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
-      esp_now_init();
-      esp_now_register_recv_cb(ESPNowClientOnDataRecv);
-      memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-      peerInfo.channel = chan;  
-      peerInfo.encrypt = false;
-      esp_now_add_peer(&peerInfo);
+      espNowMux.registerReadCallback(prefix, 
+        [this](const uint8_t *mac, const uint8_t *data, int len){ 
+          this->onRecv(mac, data, len); });
       initialized = true;
     }
   }
@@ -371,23 +327,17 @@ public:
   void flush() {}
   void stop() {}
   void setTimeout(int) {}
-  static ESPNowClient *Instance;
-  uint8_t recvBuf[1024];
-  int recvBufBytes = 0;
   void onRecv(const uint8_t * mac, const uint8_t *in, int len) {
     xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
     string s;
     s.assign((const char *)in, len);
     buf += s;
-    //Serial.printf("onRecv() %d %d\n", len, buf.length());
+    //Serial.printf("onRecv() %02x:%02x:%02x:%02x:%02x:%02x %d %d\n", 
+    //  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], len, buf.length());
     xSemaphoreGive(mutex);
   }
 };
 
-ESPNowClient *ESPNowClient::Instance = NULL;
-void ESPNowClientOnDataRecv(const uint8_t * mac, const uint8_t *in, int len) { 
-   ESPNowClient::Instance->onRecv(mac, in, len);
-}
 
 class ReliableStreamESPNow : public ReliableStream<ESPNowClient> {
   void reconnect() { client.connect(); }

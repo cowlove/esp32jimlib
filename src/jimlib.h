@@ -942,6 +942,7 @@ class JimWiFi {
 					Serial.printf("Connected\n");
 					return;
 				}
+				esp_task_wdt_reset();
 				delay(100);
 			}
 		}
@@ -952,7 +953,9 @@ class JimWiFi {
 		//WiFi.mode(WIFI_STA);
 		WiFi.setSleep(false);
 		//delay(1000);
+		esp_task_wdt_reset();
 		int n = WiFi.scanNetworks();
+		esp_task_wdt_reset();
 		Serial.println("scan done");
 		
 		if (n == 0) {
@@ -989,6 +992,7 @@ class JimWiFi {
 				return;
 			}
 			delay(100);
+			esp_task_wdt_reset();
 		}
 	}
 public:
@@ -1647,6 +1651,7 @@ public:
 
 		esp_task_wdt_reset();
 		jw.run(); 
+		esp_task_wdt_reset();
 		mqtt.run(); 
 		led.run();
 		while(parseSerial == true && Serial.available()) { 
@@ -1659,7 +1664,7 @@ public:
 	}
 	void begin() { 
 		beginRan = true;
-		esp_task_wdt_init(60, true);
+		esp_task_wdt_init(15, true);
 		esp_task_wdt_add(NULL);
 
 		Serial.begin(921600, SERIAL_8N1);

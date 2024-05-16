@@ -1,3 +1,5 @@
+#ifndef ESPNOWMUX_H
+#define ESPNOWMUX_H
 using namespace std;
 #include <algorithm> 
 #include <functional> 
@@ -7,7 +9,6 @@ using namespace std;
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <esp_private/wifi.h>
-
 
 void printMac(const uint8_t *x) {
   Serial.printf("%08x=%02x:%02x:%02x:%02x:%02x:%02x ", 
@@ -87,11 +88,11 @@ public:
 
     size_t sent = 0;
     while(sent < n) { 
-      //if (broadcast) { // throttle espNOW for reliability 
-      //while(millis() - lastSend < 30) delay(1);
-      //}
       uint8_t txBuf[200];
       int pl = min((size_t)(sizeof(txBuf) - strlen(prefix)), n - sent);
+      if (pl > 150) { // throttle espNOW for reliability 
+        while(millis() - lastSend < 30) delay(1);
+      }
       memcpy(txBuf, prefix, strlen(prefix));
       memcpy(txBuf + strlen(prefix), buf + sent, pl);
       int r = esp_now_send(mac, txBuf, pl + strlen(prefix));
@@ -121,3 +122,5 @@ ESPNowMux *ESPNowMux::Instance = NULL;
 void ESPNowMuxOnRecv(const uint8_t * mac, const uint8_t *in, int len) { 
    ESPNowMux::Instance->onRecv(mac, in, len);
 }
+
+#endif // ESPNOWMUX_H

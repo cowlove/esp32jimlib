@@ -15,11 +15,13 @@ void printMac(const uint8_t *x) {
             x, x[0], x[1], x[2], x[3], x[4], x[5]);
 }
 void ESPNowMuxOnRecv(const uint8_t * mac, const uint8_t *in, int len);
+void ESPNowMuxOnSend(const uint8_t *mac_addr, esp_now_send_status_t s);
 
 class ESPNowMux { 
   int defaultChannel = 1;
   uint32_t lastSend = 0;
 public:
+  bool pending = false;
   ESPNowMux() { Instance = this; }
   void stop() { 
     initialized = false;
@@ -48,6 +50,7 @@ public:
       esp_now_deinit();
       esp_now_init();
       esp_now_register_recv_cb(ESPNowMuxOnRecv);
+      esp_now_register_send_cb(ESPNowMuxOnSend);
       memcpy(broadcastPeerInfo.peer_addr, broadcastAddress, sizeof(broadcastAddress));
       broadcastPeerInfo.channel = chan;  
       broadcastPeerInfo.encrypt = false;
@@ -78,24 +81,29 @@ public:
     memcpy(&i.peerInfo, &broadcastPeerInfo, sizeof(broadcastPeerInfo));
     callbacks.push_back(i);
   }
-  void send(const char *prefix, const uint8_t *buf, int n, bool broadcast = false) {
+  void send(const char *prefix, const uint8_t *buf, int n, bool broadcast = false, int tmo = 100) {
     check();
     uint8_t *mac = broadcastAddress;
     for(auto i = callbacks.begin(); i != callbacks.end(); i++) { 
       if (!broadcast && strcmp(prefix, i->prefix.c_str()) == 0)
         mac = i->peerInfo.peer_addr;
     }
-
     size_t sent = 0;
     while(sent < n) { 
       uint8_t txBuf[200];
       int pl = min((size_t)(sizeof(txBuf) - strlen(prefix)), n - sent);
-      if (pl > 150) { // throttle espNOW for reliability 
-        while(millis() - lastSend < 30) delay(1);
-      }
+      //if (pl > 150) { // throttle espNOW for reliability 
+      //  while(millis() - lastSend < 30) delay(1);
+      //}
       memcpy(txBuf, prefix, strlen(prefix));
       memcpy(txBuf + strlen(prefix), buf + sent, pl);
+      while(pending && tmo-- > 0) {
+        //Serial.println("delaying");
+        delay(1);
+      }
+      pending = true;
       int r = esp_now_send(mac, txBuf, pl + strlen(prefix));
+      //Serial.printf("esp_now_send(): %08d %d\n", millis(), pl);
       if (r != 0) {
         Serial.printf("esp_now_send(%02x:%02x:%02x:%02x:%02x:%02x, %d) error %d\n", 
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], pl + strlen(prefix), r);
@@ -121,6 +129,10 @@ private:
 ESPNowMux *ESPNowMux::Instance = NULL;
 void ESPNowMuxOnRecv(const uint8_t * mac, const uint8_t *in, int len) { 
    ESPNowMux::Instance->onRecv(mac, in, len);
+}
+void ESPNowMuxOnSend(const uint8_t *mac_addr, esp_now_send_status_t s) { 
+  ESPNowMux::Instance->pending = false;
+  //Serial.printf("ESPNowMuxOnSend: %08d %d\n", millis(), s);
 }
 
 #endif // ESPNOWMUX_H

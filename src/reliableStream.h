@@ -16,11 +16,13 @@ class ReliableStream : public ReliableStreamInterface {
 public:
   ReliableStream() {}
   ReliableStream(const char *s, uint16_t p) { begin(s, p); }
-  void write(const string &s) {
-    if (s.length() > 0) { 
+  void write(const string &s) { return write(s.c_str(), s.length()); }
+  void write(const char *buf, int len) { return write((const uint8_t *)buf, len); }
+  void write(const uint8_t *buf, int len) { 
+    if (len > 0) { 
       check();
       if (client.connected()) { 
-        int n = client.write((uint8_t *)s.c_str(), s.length()); 
+        int n = client.write(buf, len); 
         client.flush();
         if (n <= 0) {
           Serial.printf("ReliableStream: write error, closing\n");
@@ -28,31 +30,39 @@ public:
         }
         if (n > 0) 
           lastSend = millis();
-        //Serial.printf("SEND >>>> %s\n", s.c_str());
+        //Serial.printf("SEND >>>> %s\n", buf);
       } 
     }             
   }
+  int available() { return client.available(); }
   string read() { 
     string s;
     read(s);
     return s;
   }
+  int read(uint8_t *buf, int len) { 
+    check();
+    if (!client.connected() || !client.available()) 
+      return 0;
+
+    int n = client.read(buf, len);
+    if (n > 0) {
+      lastRecv = millis();
+      //Serial.printf("RECV <<<< %s\n", s.c_str()); 
+    }
+    if (n <= 0) {
+      Serial.printf("ReliableStream: read error, closing\n");
+      client.stop();
+    }
+    return n;
+  }
+  int read(char *buf, int len) { return read((uint8_t *)buf, len); }
   int read(string &s) {
     char buf[1024];
     s = "";
-    check(); 
-    if (client.connected() && client.available()) { 
-      int n = client.read((uint8_t *)buf, sizeof(buf));
+    int n = read(buf, sizeof(buf)); 
+    if (n > 0) 
       s.assign(buf, n);    
-      if (n > 0) {
-        lastRecv = millis();
-        //Serial.printf("RECV <<<< %s\n", s.c_str()); 
-      }
-      if (n <= 0) {
-        Serial.printf("ReliableStream: read error, closing\n");
-        client.stop();
-      }
-    }
     return s.length(); 
   }
 protected:
@@ -110,9 +120,8 @@ public:
   }
 };
 
-
 class ESPNowClient {
-  string buf;
+  string buf;  // TODO change to a CBQ
   SemaphoreHandle_t mutex;
   bool initialized = false;
 public:

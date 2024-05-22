@@ -41,6 +41,7 @@ class ConfPanelClient {
   public:
   int index;
   bool schemaRequested = false;
+  int schemaFlags = 0;
   vector <ConfPanelParam *> params;
   ConfPanelClient(int i, ConfPanelTransportEmbedded *);
   inline void addFloat(float *ptr, const char *l, float i = 1, const char *f = "%.1f",  
@@ -111,7 +112,7 @@ class ConfPanelParam {
 
 inline string ConfPanelClient::schema() {
   char buf[32];
-  snprintf(buf, sizeof(buf), "SCHEMA %d %d\n", index, params.size()); 
+  snprintf(buf, sizeof(buf), "SCHEMA %d %d %d\n", index, params.size(), schemaFlags); 
   string rval = buf;
   for(auto i = params.begin(); i != params.end(); i++) { 
     rval += (*i)->schemaString() + "\n";

@@ -56,6 +56,7 @@ public:
       broadcastPeerInfo.encrypt = false;
       esp_now_add_peer(&broadcastPeerInfo);
       initialized = true;
+      pending = false;
     }
   }
   void onRecv(const uint8_t *mac, const uint8_t *data, int len) { 
@@ -97,18 +98,25 @@ public:
       //}
       memcpy(txBuf, prefix, strlen(prefix));
       memcpy(txBuf + strlen(prefix), buf + sent, pl);
-      while(pending && tmo-- > 0) {
+      int t = tmo;
+      while(pending && t-- > 0) {
         //Serial.println("delaying");
         delay(1);
       }
-      pending = true;
-      int r = esp_now_send(mac, txBuf, pl + strlen(prefix));
-      //Serial.printf("esp_now_send(): %08d %d\n", millis(), pl);
-      if (r != 0) {
-        Serial.printf("esp_now_send(%02x:%02x:%02x:%02x:%02x:%02x, %d) error %d\n", 
-        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], pl + strlen(prefix), r);
+      if (pending == false) { 
+        pending = true;
+        int r = esp_now_send(mac, txBuf, pl + strlen(prefix));
+        //Serial.printf("esp_now_send(): %08d %d\n", millis(), pl);
+        if (r != 0) {
+          Serial.printf("esp_now_send(%02x:%02x:%02x:%02x:%02x:%02x, %d) error %d\n", 
+          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], pl + strlen(prefix), r);
+        }
+        sent += pl;
+      } else {
+        Serial.printf("ESPNowMux::write timeout(), closing\n");
+        stop();
+        return;
       }
-      sent += pl;
       lastSend = millis();
     } 
   } 

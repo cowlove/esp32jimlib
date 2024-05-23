@@ -626,6 +626,7 @@ typedef struct {
 
 #define WIFI_INIT_CONFIG_DEFAULT() {0}
 
+
 int esp_wifi_internal_set_fix_rate(int, int, int) { return ESP_OK; } 
 int esp_now_register_recv_cb(void *) { return ESP_OK; }	
 int esp_now_register_send_cb( void *) { return ESP_OK; }
@@ -639,9 +640,15 @@ int esp_wifi_start() { return ESP_OK; }
 int esp_wifi_set_channel(int, int) { return ESP_OK; } 
 typedef void (*esp_now_recv_cb_t)(const uint8_t *mac_addr, const uint8_t *data, int data_len);
 typedef void (*esp_now_send_cb_t)(const uint8_t *mac_addr, esp_now_send_status_t status);
-int esp_now_register_send_cb(esp_now_send_cb_t) { return ESP_OK; }
+esp_now_send_cb_t ESP32_esp_now_send_cb = NULL;
+int esp_now_register_send_cb(esp_now_send_cb_t cb) { ESP32_esp_now_send_cb = cb; return ESP_OK; }
 int esp_now_register_recv_cb(esp_now_recv_cb_t) { return ESP_OK; }
-int esp_now_send(const uint8_t*, const uint8_t*, size_t) { return ESP_OK; }
+int esp_now_send(const uint8_t*, const uint8_t*, size_t) {
+	static uint8_t mac[6];
+	if (ESP32_esp_now_send_cb != NULL)
+		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 
+	return ESP_OK; 
+}
 int esp_wifi_config_espnow_rate(int, int) { return ESP_OK; }
 
 #define INV_SUCCESS 1

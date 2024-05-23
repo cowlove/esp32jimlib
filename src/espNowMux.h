@@ -105,7 +105,7 @@ public:
         //Serial.println("delaying");
         delay(1);
       }
-      if (pending == false) { 
+      if (pending == false) {
         pending = true;
         int r = esp_now_send(mac, txBuf, pl + strlen(prefix));
         //Serial.printf("esp_now_send(): %08d %d\n", millis(), pl);

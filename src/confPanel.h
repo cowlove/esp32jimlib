@@ -43,7 +43,7 @@ class ConfPanelClient {
   bool schemaRequested = false;
   int schemaFlags = 0;
   vector <ConfPanelParam *> params;
-  ConfPanelClient(int i, ConfPanelTransportEmbedded *);
+  ConfPanelClient(ConfPanelTransportEmbedded *);
   inline void addFloat(float *ptr, const char *l, float i = 1, const char *f = "%.1f",  
     float mi = 0, float ma = 0, bool w = false);
   inline void addInt(int *ptr, const char *l, float i = 1, const char *f = "%.0f",  
@@ -57,6 +57,7 @@ class ConfPanelClient {
   inline string values();
   inline void onRecv(const string &);
   inline string readData(); 
+  virtual void run() {};
 };
 
 class ConfPanelParam {
@@ -190,6 +191,7 @@ class ConfPanelTransportEmbedded {
   bool intialized = false;
   ReliableStreamInterface *stream;
 public:
+  int nextClientIndex = 0;
   vector <ConfPanelClient *> clients;
   ConfPanelTransportEmbedded(ReliableStreamInterface *s) : stream(s) {}
   void add(ConfPanelClient *p) { 
@@ -212,6 +214,8 @@ public:
         udp.endPacket();
         lastBroadcast = millis();
       }
+      for (auto c : clients) 
+        c->run();    
   }
 
   LineBuffer lb;
@@ -225,4 +229,7 @@ public:
   }
 };
 
-inline ConfPanelClient::ConfPanelClient(int i, ConfPanelTransportEmbedded *t) : index(i) { t->add(this); }
+inline ConfPanelClient::ConfPanelClient(ConfPanelTransportEmbedded *t) { 
+  index = t->nextClientIndex++;
+  t->add(this); 
+}

@@ -52,7 +52,7 @@ static inline void ledcWrite(int, int) {}
 #define DEG2RAD(x) ((x)*M_PI/180)
 #define RAD2DEG(x) ((x)*180/M_PI)
 
-std::string strfmt(const char *format, ...) { 
+inline std::string strfmt(const char *format, ...) { 
     va_list args;
     va_start(args, format);
 	char buf[256];
@@ -61,7 +61,7 @@ std::string strfmt(const char *format, ...) {
 	return std::string(buf);
 }
 
-String Sfmt(const char *format, ...) { 
+inline String Sfmt(const char *format, ...) { 
     va_list args;
     va_start(args, format);
 	char buf[256];
@@ -70,7 +70,7 @@ String Sfmt(const char *format, ...) {
 	return String(buf);
 }
 
-std::string sfmt(const char *format, ...) { 
+inline std::string sfmt(const char *format, ...) { 
     va_list args;
     va_start(args, format);
 	char buf[256];
@@ -79,7 +79,7 @@ std::string sfmt(const char *format, ...) {
 	return std::string(buf);
 }
 
-int scanI2c() { 
+inline int scanI2c() { 
 	int count = 0;
 	for (byte i = 8; i < 120; i++)
 	{
@@ -101,7 +101,7 @@ int scanI2c() {
 	return count;
 }
 
-void printPins() { 
+inline void printPins() { 
         for (int n = 0; n <= 1; n++) {
                 pinMode(n, INPUT_PULLUP); 
                 Serial.printf("%02d:%d ", n, digitalRead(n));
@@ -1213,8 +1213,11 @@ public:
 static const float FEET_PER_METER = 3.3208;
 static const float MPS_PER_KNOT = 0.51444;
 
-float random01() { 	return rand() / (RAND_MAX + 1.0); }
+inline float random01() { 	return rand() / (RAND_MAX + 1.0); }
 #define ARRAY_SIZE(array) (sizeof(array)/sizeof(array[0]))
+#ifndef GIT_VERSION
+#define GIT_VERSION "unknown-git-version"
+#endif
 
 #ifdef GIT_VERSION
 char _GIT_VERSION[] = GIT_VERSION;
@@ -1742,7 +1745,7 @@ class TempSensor {
 	}
 };
 
-void digitalToggle(int pin) { pinMode(pin, OUTPUT); digitalWrite(pin, !digitalRead(pin)); }
+inline void digitalToggle(int pin) { pinMode(pin, OUTPUT); digitalWrite(pin, !digitalRead(pin)); }
 
 // registers SETTEMP, CURRENTTEMP, HIST commands with CLI.  Returns heat on/off
 // value from check() function 

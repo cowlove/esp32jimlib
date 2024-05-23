@@ -5,10 +5,12 @@ using namespace std;
 #include <functional> 
 #include <cctype>
 #include <locale>
+#ifndef CSIM
 #include "WiFiServer.h"
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <esp_private/wifi.h>
+#endif
 
 void printMac(const uint8_t *x) {
   Serial.printf("%08x=%02x:%02x:%02x:%02x:%02x:%02x ", 

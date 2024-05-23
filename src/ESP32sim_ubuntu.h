@@ -67,12 +67,14 @@ void ESP32sim_exit();
 // Stub out FreeRTOS stuff 
 typedef int SemaphoreHandle_t;
 int xSemaphoreCreateCounting(int, int) { return 0; } 
+int xSemaphoreCreateMutex() { return 0; } 
 int xSemaphoreGive(int) { return 0; } 
 int xSemaphoreTake(int, int) { return 0; }
 int uxSemaphoreGetCount(int) { return 0; } 
 #define portMAX_DELAY 0 
 #define tskIDLE_PRIORITY 0
-#define pdMS_TO_TICKS(x) (x) 	
+#define pdMS_TO_TICKS(x) (x)
+#define portTICK_PERIOD_MS 0 	
 void xTaskCreate(void (*)(void *), const char *, int, void *, int, void *) {}
 #define WRITE_PERI_REG(a, b) if(0) {}
 #define RTC_CNTL_BROWN_OUT_REG 0
@@ -398,15 +400,17 @@ struct StaticJsonDocument {
 typedef int DeserializationError;
 int deserializeJson(StaticJsonDocument<1024>, String) { return 0; }
 
-class FakeWiFi {
-	public:
+struct FakeWiFi {
 	int curStatus = WL_DISCONNECTED;
 	int begin(const char *, const char *) { curStatus = WL_CONNECTED; return 0; }
 	int status() { return curStatus; } 
 	IPAddress localIP() { return IPAddress(); } 
 	void setSleep(bool) {}
 	void mode(int) {}
+	int isConnected() { return 0; }
+	int channel() { return 0; }
 	void disconnect(bool) {}
+	void scanDelete() {}
 	String SSID(int i = 0) { return String("FakeWiFi"); }
 	int waitForConnectResult() { return 0; }
 	int scanNetworks() { return 0; }
@@ -421,10 +425,22 @@ class WiFiClientSecure {
 	void setInsecure() {}
 };
  
-class WiFiClient { 
-	public:
+struct WiFiClient { 
 	int available() { return 0; }
 	int readBytes(uint8_t *, int) { return 0; }
+	int connected() { return 0; }
+	void setTimeout(int) {}
+	void stop() {}
+	void flush() {}
+	int write(const uint8_t *, int) { return 0; }
+	int read(uint8_t *, int) { return 0; }
+	int connect(const char *, int, int tmo = 0) { return 0; } 
+};
+
+struct WiFiServer { 
+	int begin(int) { return 0; }
+	WiFiClient client;
+	WiFiClient available() { return client; }
 };
 
 class HTTPClient { 
@@ -599,7 +615,7 @@ typedef enum {
 } esp_now_send_status_t;
 
 typedef struct {
-	char peer_addr[6];
+	uint8_t peer_addr[6];
 	bool encrypt; 
 	int channel;	
 } esp_now_peer_info_t;
@@ -614,6 +630,7 @@ int esp_wifi_internal_set_fix_rate(int, int, int) { return ESP_OK; }
 int esp_now_register_recv_cb(void *) { return ESP_OK; }	
 int esp_now_register_send_cb( void *) { return ESP_OK; }
 int esp_now_init() { return ESP_OK; } 
+int esp_now_deinit() { return ESP_OK; } 
 int esp_now_add_peer(void *) { return ESP_OK; } 
 int esp_wifi_stop() { return ESP_OK; } 
 int esp_wifi_deinit() { return ESP_OK; } 

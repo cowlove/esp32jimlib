@@ -113,7 +113,7 @@ class ConfPanelParam {
 
 inline string ConfPanelClient::schema() {
   char buf[32];
-  snprintf(buf, sizeof(buf), "SCHEMA %d %d %d\n", index, params.size(), schemaFlags); 
+  snprintf(buf, sizeof(buf), "SCHEMA %d %d %d\n", index, (int)params.size(), schemaFlags); 
   string rval = buf;
   for(auto i = params.begin(); i != params.end(); i++) { 
     rval += (*i)->schemaString() + "\n";
@@ -209,8 +209,8 @@ public:
       }
       if (millis() - lastBroadcast > 2000) { 
         string s = WiFi.localIP().toString().c_str();
-        int n = udp.beginPacket("255.255.255.255", 4444);
-        n = udp.write((uint8_t *)s.c_str(), s.length());
+        udp.beginPacket("255.255.255.255", 4444);
+        udp.write((uint8_t *)s.c_str(), s.length());
         udp.endPacket();
         lastBroadcast = millis();
       }

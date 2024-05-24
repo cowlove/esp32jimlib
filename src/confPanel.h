@@ -67,6 +67,7 @@ class ConfPanelParam {
   bool wrap;
   string label, fmt, enumlist;
   int index;
+  int flags = 0;
   ConfPanelClient *owner;
   public:
   ConfPanelParam(ConfPanelClient *o, float *fp, int *ip, const char *l, const char *f, float i = 1, float mi = 0, float ma = 0, bool w = false, const char *el = "none") 
@@ -79,8 +80,8 @@ class ConfPanelParam {
   }
   string schemaString() { 
     char buf[256];
-    snprintf(buf, sizeof(buf), "%s, %s, %f, %f, %f, %f, %d, %s", 
-      label.c_str(), fmt.c_str(), inc, min, max, get(), (int)wrap, enumlist.c_str());
+    snprintf(buf, sizeof(buf), "%s, %s, %f, %f, %f, %f, %d, %s, %d", 
+      label.c_str(), fmt.c_str(), inc, min, max, get(), (int)wrap, enumlist.c_str(), flags);
     return string(buf);
   }
   string valueString() { 
@@ -190,6 +191,8 @@ class ConfPanelTransportEmbedded {
   WiFiUDP udp;
   bool intialized = false;
   ReliableStreamInterface *stream;
+  uint16_t lastRun = 0;
+  float hz = 10;
 public:
   int nextClientIndex = 0;
   vector <ConfPanelClient *> clients;
@@ -198,6 +201,8 @@ public:
       clients.push_back(p);
   }
   void run() {
+      if (millis() - lastRun < 1000 / hz)
+        return;
       string s;
       for (auto c : clients) 
           s += c->readData();    

@@ -8,7 +8,7 @@
 #include <iterator>
 #include <fcntl.h>
 #ifndef UBUNTU
-#include "DNSServer.h"
+//#include "DNSServer.h"
 #include <HardwareSerial.h>
 #include <SPI.h>
 #define FS_NO_GLOBALS
@@ -29,7 +29,7 @@
 #include <soc/soc.h>
 #include <Update.h>			
 #include <HTTPClient.h>
-#include <WiFiMulti.h>
+//#include <WiFiMulti.h>
 #include <ESPmDNS.h>
 #include <Update.h>			
 #include <WebServer.h>
@@ -1670,7 +1670,7 @@ public:
 		esp_task_wdt_init(15, true);
 		esp_task_wdt_add(NULL);
 
-		Serial.begin(921600, SERIAL_8N1);
+		Serial.begin(115200, SERIAL_8N1);
 		Serial.printf("\n************************\n\n\n %s " GIT_VERSION " " __DATE__ " " __TIME__ "\n", basename_strip_ext(__BASE_FILE__));
 		getLedPin();
 

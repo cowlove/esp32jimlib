@@ -79,7 +79,7 @@ class ConfPanelParam {
       lastValue = get();
   }
   string schemaString() { 
-    char buf[256];
+    char buf[512];
     snprintf(buf, sizeof(buf), "%s, %s, %f, %f, %f, %f, %d, %s, %d", 
       label.c_str(), fmt.c_str(), inc, min, max, get(), (int)wrap, enumlist.c_str(), flags);
     return string(buf);

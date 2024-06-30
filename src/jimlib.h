@@ -1210,7 +1210,7 @@ public:
         T operator () (T in) { return extrapolate(in); }
 };
 
-static const float FEET_PER_METER = 3.3208;
+static const float FEET_PER_METER = 3.2804;
 static const float MPS_PER_KNOT = 0.51444;
 
 inline float random01() { 	return rand() / (RAND_MAX + 1.0); }

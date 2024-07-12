@@ -66,11 +66,25 @@ void ESP32sim_exit();
 
 // Stub out FreeRTOS stuff 
 typedef int SemaphoreHandle_t;
-int xSemaphoreCreateCounting(int, int) { return 0; } 
-int xSemaphoreCreateMutex() { return 0; } 
-int xSemaphoreGive(int) { return 0; } 
-int xSemaphoreTake(int, int) { return 0; }
-int uxSemaphoreGetCount(int) { return 0; } 
+static int Semaphores[10];
+static int nextSem = 0;
+int xSemaphoreCreateCounting(int max, int init) { 
+	Semaphores[nextSem] = init;
+	return nextSem++;
+} 
+int xSemaphoreCreateMutex() { return xSemaphoreCreateCounting(1, 1); } 
+int xSemaphoreGive(int h) { Semaphores[h]++; return 0; } 
+int xSemaphoreTake(int h, int delay) {
+	if (Semaphores[h] > 0) {
+		Semaphores[h]--;
+		return 1;
+	}
+	return 0;
+}
+int uxSemaphoreGetCount(int h) { return Semaphores[h]; }
+
+
+
 #define portMAX_DELAY 0 
 #define tskIDLE_PRIORITY 0
 #define pdMS_TO_TICKS(x) (x)
@@ -350,6 +364,9 @@ class FakeSerial {
 	} 
 	int write(const uint8_t *, int) { return 0; }
 	int write(const char *) { return 0; }	
+	int read(char * b, int l) { 
+		return readBytes((uint8_t *)b, l);
+	}
 	int read() { 
 		uint8_t b;
 		if (readBytes(&b, 1) == 1)
@@ -742,15 +759,42 @@ public:
   void end() {}
   int endPacket() { return 0; }
   int parsePacket() { return 0; }
-  int packetId() { return 0; }
-  int read() { return 0; }
+  int packetId() { return packetAddr; }
+  int read() { packetByteIndex++; return 0x0a; }
   int packetRtr()  { return 0; }
-  void onReceive(void(*callback)(int)) {}
+  typedef void(*callbackT)(int);
+  callbackT callback = NULL;
+  void onReceive(callbackT cb) { callback = cb; }
   int filter(int id, int mask) { return 0; }
   int filterExtended(long id, long mask) { return 0; }
   int setPins(int, int) { return 0; }
   int write(int) { return 0; } 
   int beginExtendedPacket(int) { return 0; } 
+// simulation hooks
+  ifstream simFile;
+  string simFileLine;
+  int packetByteIndex = 0;
+  int packetLen = 0;
+  int packetAddr;
+  uint32_t firstPacketMillis = 0;
+
+  void setSimFile(const char *fn) { simFile.open(fn); }
+  void run() { 
+//	if (packetByteIndex < packetLen) 
+//		return;
+	if (callback == NULL || !simFile) 
+		return;
+
+	std::getline(simFile, simFileLine);
+	float t; 
+	if (sscanf(simFileLine.c_str(), " (%f) can0 %x [%d]", &t, &packetAddr, &packetLen) != 3) 
+		return;
+
+	if (firstPacketMillis == 0) firstPacketMillis = t * 1000 - millis();
+	if (t * 1000 - firstPacketMillis > millis()) 
+		callback(packetLen);  
+  }
+  
 } CAN;
 
 struct RTC_DS3231 {

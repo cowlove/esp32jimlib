@@ -792,29 +792,33 @@ public:
   int packetByteIndex = 0;
   int packetLen = 0;
   int packetAddr;
-  uint32_t firstPacketMillis = 0;
+  float firstPacketTs = 0;
+  float pendingPacketTs = 0;
+
 
   void setSimFile(const char *fn) { simFile.open(fn); }
   void run() { 
-//	if (packetByteIndex < packetLen) 
-//		return;
 	if (callback == NULL || !simFile) 
 		return;
+	
+	if (simFileLine.size() == 0) { 
+		std::getline(simFile, simFileLine);
+		if (sscanf(simFileLine.c_str(), " (%f) can0 %x [%d]", &pendingPacketTs, &packetAddr, &packetLen) != 3) 
+			return;
+	}
 
-	std::getline(simFile, simFileLine);
-	float t; 
-	if (sscanf(simFileLine.c_str(), " (%f) can0 %x [%d]", &t, &packetAddr, &packetLen) != 3) 
-		return;
-
-	packetByteIndex = 0;
-	if (firstPacketMillis == 0) firstPacketMillis = t * 1000 - millis();
-	if (t * 1000 - firstPacketMillis > millis()) {
-		int remain = packetLen;
-		while(remain > 0) { 
-			int l = min(remain, 8);
-			callback(l);
-			remain -= 8;
-		}  
+	if (simFileLine.size() > 0) { 
+		packetByteIndex = 0;
+		if (firstPacketTs == 0) firstPacketTs = pendingPacketTs;
+		if (millis() > (pendingPacketTs - firstPacketTs) * 1000.0) {
+			int remain = packetLen;
+			while(remain > 0) { 
+				int l = min(remain, 8);
+				callback(l);
+				remain -= 8;
+			} 
+			simFileLine = ""; 
+		}
 	}
   }
   

@@ -25,7 +25,7 @@ public:
         int n = client.write(buf, len); 
         client.flush();
         if (n <= 0) {
-          Serial.printf("ReliableStream: write error, closing\n");
+          //Serial.printf("ReliableStream: write error, closing\n");
           client.stop();
         }
         if (n > 0) 
@@ -51,7 +51,7 @@ public:
       //Serial.printf("RECV <<<< %s\n", s.c_str()); 
     }
     if (n <= 0) {
-      Serial.printf("ReliableStream: read error, closing\n");
+      //Serial.printf("ReliableStream: read error, closing\n");
       client.stop();
     }
     return n;
@@ -78,7 +78,7 @@ protected:
     }
     if (millis() - lastRecv > 9000) {
       lastRecv = millis();
-      Serial.printf("ReliableStream: readTimeout, closing\n");
+      //Serial.printf("ReliableStream: readTimeout, closing\n");
       if (client.connected()) 
         client.stop();
     }

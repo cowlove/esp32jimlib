@@ -33,6 +33,7 @@ public:
     }
     esp_now_deinit();
   }
+  bool firstInit = true;
   void check() {
     if (!initialized) { 
       int chan = WiFi.channel();
@@ -45,7 +46,9 @@ public:
         esp_wifi_init(&my_config);
         esp_wifi_start(); 
       }
-      Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
+      if (firstInit) 
+        Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
+      firstInit = false;
       WiFi.mode(WIFI_STA);
       esp_wifi_start();
       esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
@@ -115,7 +118,7 @@ public:
         }
         sent += pl;
       } else {
-        Serial.printf("ESPNowMux::write timeout(), closing\n");
+        //Serial.printf("ESPNowMux::write timeout(), closing\n");
         stop();
         return;
       }

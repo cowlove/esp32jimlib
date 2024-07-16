@@ -760,7 +760,23 @@ public:
   int endPacket() { return 0; }
   int parsePacket() { return 0; }
   int packetId() { return packetAddr; }
-  int read() { packetByteIndex++; return 0x0a; }
+  int read() { 
+	char *p = strchr((char *)simFileLine.c_str(), ']');
+	if (p == NULL) return 0;
+	for (int i = 0; i < packetByteIndex / 8 + 1; i++) {
+		p = strchr(p + 1, ' ');
+		if (p == NULL) return 0;
+	}
+	unsigned int rval;
+	char b[3];
+	b[0] = *(p + 1 + (packetByteIndex % 8) * 2);
+	b[1] = *(p + 2 + (packetByteIndex % 8) * 2);
+	b[3] = 0;
+	if (sscanf(b, "%02x", &rval) != 1)
+		return 0;
+	packetByteIndex++;
+	return rval; 
+  }
   int packetRtr()  { return 0; }
   typedef void(*callbackT)(int);
   callbackT callback = NULL;
@@ -790,9 +806,16 @@ public:
 	if (sscanf(simFileLine.c_str(), " (%f) can0 %x [%d]", &t, &packetAddr, &packetLen) != 3) 
 		return;
 
+	packetByteIndex = 0;
 	if (firstPacketMillis == 0) firstPacketMillis = t * 1000 - millis();
-	if (t * 1000 - firstPacketMillis > millis()) 
-		callback(packetLen);  
+	if (t * 1000 - firstPacketMillis > millis()) {
+		int remain = packetLen;
+		while(remain > 0) { 
+			int l = min(remain, 8);
+			callback(l);
+			remain -= 8;
+		}  
+	}
   }
   
 } CAN;

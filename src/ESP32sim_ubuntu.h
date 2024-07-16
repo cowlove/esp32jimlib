@@ -810,7 +810,7 @@ public:
 	if (simFileLine.size() > 0) { 
 		packetByteIndex = 0;
 		if (firstPacketTs == 0) firstPacketTs = pendingPacketTs;
-		if (millis() > (pendingPacketTs - firstPacketTs) * 1000.0) {
+		if (micros() > (pendingPacketTs - firstPacketTs) * 1000000.0) {
 			int remain = packetLen;
 			while(remain > 0) { 
 				int l = min(remain, 8);

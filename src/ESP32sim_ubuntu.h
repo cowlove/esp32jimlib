@@ -803,7 +803,8 @@ public:
 	
 	if (simFileLine.size() == 0) { 
 		std::getline(simFile, simFileLine);
-		if (sscanf(simFileLine.c_str(), "RU  (%f) can0 %x [%d]", &pendingPacketTs, &packetAddr, &packetLen) != 3) 
+		if (sscanf(simFileLine.c_str(), " (%f) can0 %x [%d]", 
+			&pendingPacketTs, &packetAddr, &packetLen) != 3) 
 			return;
 	}
 

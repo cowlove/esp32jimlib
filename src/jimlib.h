@@ -1670,7 +1670,7 @@ public:
 		esp_task_wdt_init(15, true);
 		esp_task_wdt_add(NULL);
 
-		Serial.begin(115200, SERIAL_8N1);
+		Serial.begin(115200);
 		Serial.printf("\n************************\n\n\n %s " GIT_VERSION " " __DATE__ " " __TIME__ "\n", basename_strip_ext(__BASE_FILE__));
 		getLedPin();
 

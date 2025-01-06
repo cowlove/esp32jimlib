@@ -67,11 +67,11 @@ class RollingLeastSquaresBase {
     	add(x, y, 1.0);
     }
     T slope() {
-        if (count < 2) return 0.0;
+        if (count < 2 || (totalWeight * XX - X * X == 0.0)) return 0.0;
         return (totalWeight * XY - X * Y) / (totalWeight * XX - X * X);
 	}	
 	T intercept() { 
-		if (count < 1) return 0.0;
+		if (count < 1 || totalWeight == 0.0) return 0.0;
 		T b = (Y - slope() * X) / (totalWeight);
 		return slope() * -xBase + b;
 	}
@@ -85,7 +85,7 @@ class RollingLeastSquaresBase {
 		return std::abs((-x * slope()) + y - intercept()) / 
                         sqrt(slope() * slope() + 1);
 	}
-    T rmsError() {
+    SumT rmsError() {
         T s = 0;
         for (int i = 0; i < count; i++) {
             int idx = (index + size - count + i) % size;
@@ -111,7 +111,7 @@ class RollingLeastSquaresBase {
             totalWeight += weights[n];
 		}
 	}
-    T averageY() {
+    SumT averageY() {
     	return totalWeight > 0 ? Y / totalWeight : 0;
     }
     void add(T x, T y, T w) {
@@ -205,7 +205,7 @@ public:
 template <class T, int SIZE>
 class RollingAverage {
 	T values[SIZE];
-	float sum = 0;
+	double sum = 0;
 public:
 	int count = 0;
 	int index = 0;
@@ -221,7 +221,7 @@ public:
 		if (index >= SIZE)
 			index = 0;
 	}
-	float average() { 
+	double average() { 
 		return count > 0 ? ((float)sum)/count : 0;
 	}
 	T min() { 

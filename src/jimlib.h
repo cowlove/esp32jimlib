@@ -921,7 +921,7 @@ class JimWiFi {
 						//{"Flora2", "Maynards."},
 						//{"MOF-Guest", ""},
 						//{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
-						{"trex","Maeby1989!"},
+						{"ClemmyNet","clementine is a cat"},
 						{"ChloeNet3", "niftyprairie7"},
 						{"Tip of the Spear", "51a52b5354"},  
 						{"Team America", "51a52b5354"},  
@@ -1550,6 +1550,7 @@ public:
 
 template<> const char *CommandLineInterfaceESP32::formatOf<float>() { return "%f"; }
 template<> const char *CommandLineInterfaceESP32::formatOf<int>() { return "%i"; }
+template<> const char *CommandLineInterfaceESP32::formatOf<unsigned int>() { return "%x"; }
 
 template<>
 void CommandLineInterfaceESP32::hookRaw<string>(const char *pat, string *v) {
@@ -1608,6 +1609,7 @@ class CliVariable {
 #define CLI_VARIABLE_INT(name,val) CliVariable<int> name = CliVariable<int>(j.cli, #name, val)
 #define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name = CliVariable<float>(j.cli, #name, val)
 #define CLI_VARIABLE_STRING(name,val) CliVariable<String> name = CliVariable<String>(j.cli, #name, val)
+#define CLI_VARIABLE_HEXINT(name,val) CliVariable<unsigned int> name = CliVariable<unsigned int>(j.cli, #name, val)
 
 class JStuff {		
 public:
@@ -1644,7 +1646,7 @@ public:
 
 	bool cliEcho = true;
 	JimWiFi jw;
-	MQTTClient mqtt = MQTTClient("192.168.5.1", basename_strip_ext(__BASE_FILE__).c_str());
+	MQTTClient mqtt = MQTTClient("192.168.68.138", basename_strip_ext(__BASE_FILE__).c_str());
 	void run() { 
 		if (beginRan == false)
 			begin();
@@ -1701,7 +1703,7 @@ public:
 		va_end(args);
 		mqtt.pub(buf);
 		Serial.println(buf);
-		//jw.udpDebug(buf);
+		jw.udpDebug(buf);
 	}
 	void log(int ll, const char *format, ...) { 
 		va_list args;

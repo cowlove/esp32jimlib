@@ -7,7 +7,7 @@
 #include <vector>
 #include <iterator>
 #include <fcntl.h>
-#ifndef UBUNTU
+#ifndef CSIM
 //#include "DNSServer.h"
 #include <HardwareSerial.h>
 #include <SPI.h>
@@ -44,7 +44,7 @@ static inline void ledcSetup(int, int, int) {}
 static inline void ledcAttachPin(int, int) {}
 static inline void ledcWrite(int, int) {}
 #endif //ESP32
-#else // !UBUNTU
+#else // !CSIM
 #include "ESP32sim_ubuntu.h"
 #endif
 
@@ -285,7 +285,7 @@ public:
 	int count = 0;
 	unsigned long lastChange;
 
-#ifndef UBUNTU
+#ifndef CSIM
 	portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 	void IRAM_ATTR ISR() {	
 		portENTER_CRITICAL_ISR(&(this->mux));
@@ -1148,7 +1148,7 @@ public:
 	}
 };
 
-#ifdef UBUNTU
+#ifdef CSIM
 #include <fcntl.h>
 #include <unistd.h>
 #endif

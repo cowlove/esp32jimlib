@@ -103,6 +103,22 @@ int rtc_get_reset_reason(int) { return 0; }
 //static inline void ledcAttachPin(int, int) {}
 //static inline void ledcWrite(int, int) {}
 
+#define ADC1_CHANNEL_1 0
+#define ADC1_CHANNEL_2 0
+#define ADC1_CHANNEL_3 0
+int adc1_get_raw(int) { return 0; }
+#define delayUs(x) delayMicroseconds(x)
+#define NEO_GRB 0
+#define NEO_KHZ800 0
+struct Adafruit_NeoPixel {
+  Adafruit_NeoPixel(int, int, int) {}
+  static int Color(int, int, int) { return 0; }
+  void begin() {}
+  void setPixelColor(int, int a = 0, int b = 0, int c = 0) {}
+  void show() {}
+  void clear() {}
+};
+
 
 namespace fs { 
 class File {

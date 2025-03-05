@@ -45,7 +45,19 @@ using std::to_string;
 #ifndef GIT_VERSION
 #define GIT_VERSION "no-git-version"
 #endif
+struct sensors_event_t {
+	float temperature = -1;
+	float relative_humidity = -1;
+};
 
+#define DHT22 0
+struct DHT_Unified {
+	struct response { void getEvent(sensors_event_t *) {} } resp;
+	DHT_Unified(int, int) {}  
+	int begin() { return 0; } 
+	struct response temperature() { return resp; }
+	struct response humidity() { return resp; } 
+};
 
 class ESP32sim_Module {
 public:
@@ -478,6 +490,7 @@ struct WiFiServer {
 
 class HTTPClient { 
 	public:
+        int begin(const char *) { return 0; }
 	int begin(WiFiClientSecure, const char *) { return 0; }
 	String getString() { return String(); }
 	int GET() { return 0; }
@@ -486,7 +499,7 @@ class HTTPClient {
 	bool connected() { return 0; } 
 	void end() {}
 	void addHeader(const char *, const char *) {}
-	int POST(const char *) { return 0; }
+	int POST(const char *) { return -1; }
 };
 
 #define PROGMEM 

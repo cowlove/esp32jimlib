@@ -917,12 +917,12 @@ class JimWiFi {
 				const char *name;
 				const char *pass;
 			} aps[] = {	{"Ping-582B", ""}, 
-						{"ChloeNet", "niftyprairie7"},
+						//{"ChloeNet", "niftyprairie7"},
 						//{"Flora2", "Maynards."},
-						//{"MOF-Guest", ""},
+						{"MOF-Guest", ""},
 						//{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
 						{"ClemmyNet","clementine is a cat"},
-						{"ChloeNet3", "niftyprairie7"},
+						{"ChloeNet4", "niftyprairie7"},
 						{"Tip of the Spear", "51a52b5354"},  
 						{"Team America", "51a52b5354"},  
 						{"Station 54", "Local1747"},
@@ -985,7 +985,7 @@ class JimWiFi {
 		//WiFi.setSleep(false);
 		delay(100);
 		WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
-		for(int d = 0; d < 80; d++) { 
+		for(int d = 0; d < 200; d++) { 
 			if (WiFi.status() == WL_CONNECTED) {
 				Serial.printf("Connected\n");
 				lastAP = bestMatch;
@@ -1266,13 +1266,14 @@ void dbg(const char *(format), ...) {
 
 #ifdef ESP32 // TODO we could do this on the 8266
 static void webUpgrade(const char *u) {
-	WiFiClientSecure wc;
-	wc.setInsecure();
+	//WiFiClientSecure wc;
+	//wc.setInsecure();
 	HTTPClient client; 
 
 	int offset = 0;
 	int len = 1024 * 16;
 	int errors = 0;
+	int fwLen = 0;
  
 	Update.begin(UPDATE_SIZE_UNKNOWN);
 	Serial.println("Updating firmware...");
@@ -1281,7 +1282,8 @@ static void webUpgrade(const char *u) {
 		esp_task_wdt_reset();
 		String url = String(u) + Sfmt("?len=%d&offset=%d", len, offset);
 		dbg("offset %d, len %d, url %s", offset, len, url.c_str());
-		client.begin(wc, url);
+		//client.begin(wc, url);
+		client.begin(url);
 		int resp = client.GET();
 		//dbg("HTTPClient.get() returned %d\n", resp);
 		if(resp != 200) {
@@ -1293,14 +1295,13 @@ static void webUpgrade(const char *u) {
 			}
 			continue;
 		}
-		int currentLength = 0;
 		int	totalLength = client.getSize();
 		int len = totalLength;
 		uint8_t bbuf[128], tbuf[256];
 	
 		//Serial.printf("FW Size: %u\n",totalLength);
 		if (totalLength == 0) { 
-			Serial.printf("\nUpdate Success, Total Size: %u\nRebooting...\n", currentLength);
+			Serial.printf("\nUpdate Success, Total Size: %u\nRebooting...\n", fwLen);
 			Update.end(true);
 			ESP.restart();
 			return;				
@@ -1308,13 +1309,17 @@ static void webUpgrade(const char *u) {
 				
 		WiFiClient * stream = client.getStreamPtr();
 		while(client.connected() && len > 0) {
-			size_t avail = stream->available();
+			int avail = stream->available();
+			avail = avail & 0xfffffe; // don't split 2-byte hex across buffers
+			//dbg("Avail %d %d", stream->available(), avail);
 			if(avail) {
 				int c = stream->readBytes(tbuf, ((avail > sizeof(tbuf)) ? sizeof(tbuf) : avail));
 				if (c > 0) {
 					hex2bin((const char *)tbuf, (char *)bbuf, c);
-					//dbg("Update with %d", c / 2);
+					//if (c % 2 == 1) 
+					//	dbg("Update with %d, avail %d", c, avail);
 					Update.write(bbuf, c / 2);
+					fwLen += c / 2;
 					if(len > 0) {
 						len -= c;
 					}
@@ -1644,6 +1649,13 @@ public:
 	}
 	void forceTicks() { forceTicksNow = true; }
 
+	bool onceFlag = true;
+	bool once() { 
+		bool rval = onceFlag;
+		onceFlag = false;
+		return rval;
+	}
+
 	bool cliEcho = true;
 	JimWiFi jw;
 	MQTTClient mqtt = MQTTClient("192.168.68.138", basename_strip_ext(__BASE_FILE__).c_str());
@@ -1679,7 +1691,7 @@ public:
 		led.setPercent(30);
 		jw.onConnect([this](){
 			led.setPattern(500, 2);
-			if (WiFi.SSID() == "ChloeNet" || WiFi.SSID() == "FakeWiFi") {
+			if (WiFi.SSID() == "ClemmyNet" || WiFi.SSID() == "FakeWiFi") {
 				jw.debug = mqtt.active = true;  
 				out("JStuff: forcing debug and mqtt.active due to WiFi network");
  			}

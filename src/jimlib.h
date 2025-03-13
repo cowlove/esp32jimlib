@@ -925,7 +925,7 @@ class JimWiFi {
 						{"ChloeNet4", "niftyprairie7"},
 						{"Tip of the Spear", "51a52b5354"},  
 						{"Team America", "51a52b5354"},  
-						{"Station 54", "Local1747"},
+						//{"Station 54", "Local1747"},
 						{"TUK-FIRE", "FD priv n3t 20 q4"} };
 
 		//WiFi.disconnect(true);

@@ -1710,7 +1710,7 @@ public:
 	void out(const char *format, ...) { 
 		va_list args;
 		va_start(args, format);
-		char buf[256];
+		char buf[1024];
 		vsnprintf(buf, sizeof(buf), format, args);
 		va_end(args);
 		mqtt.pub(buf);
@@ -1720,7 +1720,7 @@ public:
 	void log(int ll, const char *format, ...) { 
 		va_list args;
 		va_start(args, format);
-		char buf[256];
+		char buf[1024];
 		if (logLevel >= ll) { 
 			vsnprintf(buf, sizeof(buf), format, args);
 			va_end(args);

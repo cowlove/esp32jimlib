@@ -168,7 +168,9 @@ public:
 
 class ReliableStreamESPNow : public ReliableStream<ESPNowClient> {
 public: 
-  ReliableStreamESPNow(const char *prefix) : ReliableStream(prefix, 0) {}
+  ReliableStreamESPNow(const char *prefix, bool alwaysBroadcast = false) : ReliableStream(prefix, 0) {
+    espNowMux.alwaysBroadcast = alwaysBroadcast;
+  }
   void reconnect() { client.prefix = host; client.connect(); }
 };
 #endif // RELIABLESTREAM_H

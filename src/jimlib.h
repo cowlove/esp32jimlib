@@ -842,48 +842,69 @@ const char* serverIndex =
 #endif
 
 int spiffsInit = 0;
+using std::string;
+template<class T> bool fromString(const string &s, T&v);
+template<> bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d", &v) == 1; }
+template<> bool fromString(const string &s, string &v) { v = s; return true; }
+
+template<class T> string toString(const T&v);
+template<> string toString(const int &v) { return sfmt("%d", v); }
+template<> string toString(const string &s) { return s; }
 
 template<class T> 
 class SPIFFSVariableESP32 { 
 	String filename;
 	const T def;
+	T val;
 public:
 	SPIFFSVariableESP32(const char *f, const T &d) : filename(f), def(d) {}
 	operator const T() {
-		T val = def;
+		val = def;
 		if (!spiffsInit) { 
 			SPIFFS.begin();
-		
 			spiffsInit = 1;
 		}
 		fs::File file = SPIFFS.open(filename.c_str(), "r");
+		size_t bytes_read = 0;
 		if (file) { 
-			uint8_t buf[64];
-			int b = file.read(buf, sizeof(buf) - 1);
-			//Serial.printf("read %d bytes from %s\n", b, filename.c_str());
+			uint8_t buf[1024]; // TODO: read the whole file 
+			bytes_read = file.read(buf, sizeof(buf) - 1);
+			//printf("read %d bytes from %s\n", bytes_read, filename.c_str());
 			file.close();
-			if (b > 0) {
-				buf[b] = 0; 
-				sscanf((char *)buf, "%d", &val);
+			if (bytes_read > 0) {
+				buf[bytes_read] = 0;
+				string s((char *)buf); 
+				fromString(s, val);
+				printf("SPIFFSVariableESP32 read file %s %s\n", filename.c_str(), s.c_str());
 			}
+		}
+		if (bytes_read <= 0) {
+			this->write(val);
 		}
 		return val;
 	} 
 	SPIFFSVariableESP32 & operator=(const T&v) { 
+		if (val != v) {
+			this->write(v);
+			val = v;
+		}
+		return *this;
+	}
+	void write(const T&v) { 
 		if (!spiffsInit) { 
 			SPIFFS.begin();
 			spiffsInit = 1;
 		}	
 		fs::File file = SPIFFS.open(filename.c_str(), "w");
 		if (file) { 
-			file.printf("%d\n", v);
+			string s = toString(v);
+			file.write((const uint8_t *)s.c_str(), s.length());
 			file.close();
-			//Serial.printf("Wrote file %s\n", filename.c_str());
+			printf("SPIFFSVariableESP32 wrote file %s %s\n", filename.c_str(), s.c_str());
 		} else { 
-			//Serial.printf("error writing file %s\n", filename.c_str());
+			printf("SPIFFSVariableESP32 error writing file %s, formatting SPIFFS\n", filename.c_str());
 			SPIFFS.format();
 		}
-		return *this;
 	}
 };
 
@@ -1361,8 +1382,10 @@ public:
 		active(a), server(s), topicPrefix(t), client(espClient), userCallback(cb) {
 	}
 	void publish(const char *suffix, const char *m) { 
-		String t = topicPrefix + "/" + suffix;
-		client.publish(t.c_str(), m);
+		if (active) { 
+			String t = topicPrefix + "/" + suffix;
+			client.publish(t.c_str(), m);
+		}
 	}
 	void publish(const char *suffix, const String &m) {
 		 publish(suffix, m.c_str()); 

@@ -142,6 +142,7 @@ class File {
         int print(const char *) { return 0; }
 	int printf(const char *, ...) { return 0; } 
 	int write(const char *, int) { return 0; } 
+	int write(const uint8_t *, int) { return 0; } 
 	int flush() { return 0; }	
 	int read(uint8_t *, int) { return 0; } 
 };
@@ -430,7 +431,7 @@ void gpio_deep_sleep_hold_dis(int) {}
 void gpio_deep_sleep_hold_en() {}
 void gpio_hold_dis(int)  {}
 void gpio_hold_en(int)  {}
-void esp_sleep_enable_timer_wakeup(uint64_t) {}
+int esp_sleep_enable_timer_wakeup(uint64_t) { return 0; }
 void esp_deep_sleep_start() { ESP32sim_exit(); }
 
 struct JsonResult { 

@@ -20,10 +20,11 @@ void ESPNowMuxOnRecv(const uint8_t * mac, const uint8_t *in, int len);
 void ESPNowMuxOnSend(const uint8_t *mac_addr, esp_now_send_status_t s);
 
 class ESPNowMux { 
-  int defaultChannel = 1;
   uint32_t lastSend = 0;
 public:
+  int defaultChannel = 1;
   bool pending = false;
+  bool alwaysBroadcast = false;
   ESPNowMux() { Instance = this; }
   void stop() { 
     initialized = false;
@@ -87,11 +88,11 @@ public:
     memcpy(&i.peerInfo, &broadcastPeerInfo, sizeof(broadcastPeerInfo));
     callbacks.push_back(i);
   }
-  void send(const char *prefix, const uint8_t *buf, int n, bool broadcast = false, int tmo = 100) {
+  void send(const char *prefix, const uint8_t *buf, int n, int tmo = 100) {
     check();
     uint8_t *mac = broadcastAddress;
     for(auto i = callbacks.begin(); i != callbacks.end(); i++) { 
-      if (!broadcast && strcmp(prefix, i->prefix.c_str()) == 0)
+      if (!alwaysBroadcast && strcmp(prefix, i->prefix.c_str()) == 0)
         mac = i->peerInfo.peer_addr;
     }
     size_t sent = 0;

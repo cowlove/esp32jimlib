@@ -68,7 +68,6 @@ public:
 	virtual void done() {};
 };
 
-
 #define byte char
 static uint64_t _micros = 0;
 static uint64_t _microsMax = 0xffffffff;
@@ -329,7 +328,8 @@ class String {
 	String &operator+=(char x) { st = st + x; return *this; } 
 	String &operator+=(const char *x) { st = st + x; return *this; } 
 	const char *c_str(void) const { return st.c_str(); }
-	operator const char *() { return c_str(); } 
+	operator const char *() { return c_str(); }
+	operator std::string() { return std::string(c_str()); } 
 	int indexOf(char c) { return st.find(c); } 
 	String substring(int a, int b) { return String(st.substr(a, b)); }  
 	void replace(const char *, const char *) {}
@@ -504,6 +504,10 @@ class HTTPClient {
 };
 
 #define PROGMEM 
+
+
+
+
 class PubSubClient : public ESP32sim_Module {
 	std::function<void(char *, byte *p, unsigned int)> callback = nullptr;
 	struct Event {
@@ -656,6 +660,8 @@ public:
 #define WIFI_SECOND_CHAN_NONE 0 
 #define WIFI_IF_AP 0
 
+
+
 typedef enum {
     ESP_NOW_SEND_SUCCESS = 0,       /**< Send ESPNOW data successfully */
     ESP_NOW_SEND_FAIL,              /**< Send ESPNOW data fail */
@@ -673,6 +679,37 @@ typedef struct {
 
 #define WIFI_INIT_CONFIG_DEFAULT() {0}
 
+typedef void (*esp_now_recv_cb_t)(const uint8_t *mac_addr, const uint8_t *data, int data_len);
+typedef void (*esp_now_send_cb_t)(const uint8_t *mac_addr, esp_now_send_status_t status);
+esp_now_send_cb_t ESP32_esp_now_send_cb = NULL;
+esp_now_recv_cb_t ESP32_esp_now_recv_cb = NULL, ESP32_esp_now_csim_send_handler = 0;
+
+class ESPNOW_csim : public ESP32sim_Module {
+	struct SimPacket {
+		uint8_t mac[6];
+		string data;
+	 };
+	vector<SimPacket> pktQueue;
+public:
+	static ESPNOW_csim *Instance;
+	ESPNOW_csim() { Instance = this; }
+	void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
+		SimPacket p; 
+		memcpy(p.mac, mac_addr, sizeof(p.mac));
+		const char *cp = (const char *)data;
+		p.data = string(cp, cp + data_len);
+		pktQueue.push_back(p);
+	}
+	virtual void loop() override {
+		for(auto pkt : pktQueue) {
+			if (ESP32_esp_now_recv_cb != NULL) {
+				ESP32_esp_now_recv_cb(pkt.mac, (const uint8_t *)pkt.data.c_str(), pkt.data.length());
+			}
+		}
+		pktQueue.clear();
+	} 
+} espnow;
+ESPNOW_csim *ESPNOW_csim::Instance = NULL;
 
 int esp_wifi_internal_set_fix_rate(int, int, int) { return ESP_OK; } 
 int esp_now_register_recv_cb(void *) { return ESP_OK; }	
@@ -685,15 +722,13 @@ int esp_wifi_deinit() { return ESP_OK; }
 int esp_wifi_init(wifi_init_config_t *) { return ESP_OK; } 
 int esp_wifi_start() { return ESP_OK; } 
 int esp_wifi_set_channel(int, int) { return ESP_OK; } 
-typedef void (*esp_now_recv_cb_t)(const uint8_t *mac_addr, const uint8_t *data, int data_len);
-typedef void (*esp_now_send_cb_t)(const uint8_t *mac_addr, esp_now_send_status_t status);
-esp_now_send_cb_t ESP32_esp_now_send_cb = NULL;
 int esp_now_register_send_cb(esp_now_send_cb_t cb) { ESP32_esp_now_send_cb = cb; return ESP_OK; }
-int esp_now_register_recv_cb(esp_now_recv_cb_t) { return ESP_OK; }
-int esp_now_send(const uint8_t*, const uint8_t*, size_t) {
-	static uint8_t mac[6];
+int esp_now_register_recv_cb(esp_now_recv_cb_t cb) { ESP32_esp_now_recv_cb = cb; return ESP_OK; }
+int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
 	if (ESP32_esp_now_send_cb != NULL)
 		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 
+	if (ESPNOW_csim::Instance != NULL)
+		ESPNOW_csim::Instance->send(mac, data, len); 
 	return ESP_OK; 
 }
 int esp_wifi_config_espnow_rate(int, int) { return ESP_OK; }
@@ -902,6 +937,7 @@ public:
 	void main(int argc, char **argv) {
 		float seconds = 0;
 		Serial.toConsole = true;
+		ESPNOW_csim espnow;
 		for(char **a = argv + 1; a < argv+argc; a++) {
 			if (strcmp(*a, "--serial") == 0) {
 				printf("--serial is depricated, use --serialConsole\n");
@@ -937,8 +973,10 @@ public:
 		uint64_t lastMillis = 0;
 		while(seconds <= 0 || _micros / 1000000.0 < seconds) {
 			uint64_t now = millis();
-			for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
-				(*it)->loop();
+			//for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
+			for(auto it : modules) {
+				it->loop();
+			}
 			loop();
 			intMan.run();
 
@@ -957,7 +995,7 @@ public:
 
 void ESP32sim_exit() { 	esp32sim.exit(); }
 
-inline 	ESP32sim_Module::ESP32sim_Module() { 
+inline ESP32sim_Module::ESP32sim_Module() { 
 	esp32sim.modules.push_back(this);
 }
 

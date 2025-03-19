@@ -735,17 +735,19 @@ String basename_strip_ext(const char *fn) {
 	return rval;
 }
 
-String getMacAddress() {
-	uint8_t baseMac[6] = {0xff};
+
+const String &getMacAddress() {
+	static uint8_t baseMac[6] = {0xff};
 #ifdef ESP32
 	// Get MAC address for WiFi station
 	esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
 #endif
-	char baseMacChr[18] = {0};
+	static char baseMacChr[18] = {0};
+	static String mac;
 	sprintf(baseMacChr, "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
-	return String(baseMacChr);
+	mac = baseMacChr;
+	return mac;
 }
-
 
 #if 0 
 const char* host = "esp32";
@@ -1402,7 +1404,9 @@ public:
 			client.setCallback([this](char* topic, byte* p, unsigned int l) {
 				this->callBack(topic, p, l);
 			});
-			std::string s = strfmt("MQTT connected uptime %.1f sec", millis() / 1000.0);
+			std::string s = strfmt("MQTT connected uptime %.1f sec %s %s %s " GIT_VERSION " built " __DATE__ " " __TIME__ , 
+				millis() / 1000.0, getMacAddress().c_str(),  
+				WiFi.localIP().toString().c_str(), basename_strip_ext(__BASE_FILE__).c_str());
 			publish("sys", s.c_str());
 			Serial.println(s.c_str());
 		} else {
@@ -1708,7 +1712,9 @@ public:
 		esp_task_wdt_add(NULL);
 
 		Serial.begin(115200);
-		Serial.printf("\n************************\n\n\n %s " GIT_VERSION " " __DATE__ " " __TIME__ "\n", basename_strip_ext(__BASE_FILE__));
+		Serial.printf("\n************************\n\n\n "
+			"%s %s " GIT_VERSION " " __DATE__ " " __TIME__ "\n", 
+			getMacAddress().c_str(), basename_strip_ext(__BASE_FILE__));
 		getLedPin();
 
 		led.setPercent(30);
@@ -1737,7 +1743,8 @@ public:
 		vsnprintf(buf, sizeof(buf), format, args);
 		va_end(args);
 		mqtt.pub(buf);
-		Serial.println(buf);
+		printf("%s", buf);
+		printf("\n");
 		jw.udpDebug(buf);
 	}
 	void log(int ll, const char *format, ...) { 

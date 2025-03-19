@@ -33,7 +33,7 @@
 #include <ESPmDNS.h>
 #include <Update.h>			
 #include <WebServer.h>
-#include <mySD.h> // Add "EXCLUDE_DIRS=esp32-micro-sdcard" to Makefile if this breaks ESP8266 builds
+//#include <mySD.h> // Add "EXCLUDE_DIRS=esp32-micro-sdcard" to Makefile if this breaks ESP8266 builds
 #include <SPIFFS.h>
 #include <esp_task_wdt.h>
 #else // ESP32

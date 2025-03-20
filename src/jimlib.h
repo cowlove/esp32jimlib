@@ -25,7 +25,9 @@
 #include <regex>
 
 #ifdef ESP32
+#ifndef ESP32CORE_V3
 #include <soc/rtc_cntl_reg.h>
+#endif
 #include <soc/soc.h>
 #include <Update.h>			
 #include <HTTPClient.h>
@@ -33,7 +35,6 @@
 #include <ESPmDNS.h>
 #include <Update.h>			
 #include <WebServer.h>
-//#include <mySD.h> // Add "EXCLUDE_DIRS=esp32-micro-sdcard" to Makefile if this breaks ESP8266 builds
 #include <SPIFFS.h>
 #include <esp_task_wdt.h>
 #else // ESP32

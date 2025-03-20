@@ -55,9 +55,14 @@ static inline void ledcWrite(int, int) {}
 #define RAD2DEG(x) ((x)*180/M_PI)
 
 #ifndef ESP32CORE_V2
-#define esp_task_wdt_init(sec,b) if(1) { esp_task_wdt_config_t c; esp_task_wdt_init(&c); } // include jimlib.h last or this will cause compile errors in other headers
+// core V3
+#define esp_task_wdt_init(sec,b) if(1) { esp_task_wdt_config_t c; c.timeout_ms = (sec)*1000; c.idle_core_mask = 0xff; c.trigger_panic = true; esp_task_wdt_init(&c); } // include jimlib.h last or this will cause compile errors in other headers
 #else
-void ledcAttachChannel(int pin, int freq, int res, int channel) {}
+// core V2
+void ledcAttachChannel(int pin, int freq, int res, int channel) {
+	ledcSetup(channel, freq, res);
+	ledcAttachPin(pin, channel);
+}
 #endif
 
 

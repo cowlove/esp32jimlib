@@ -105,7 +105,7 @@ void xTaskCreate(void (*)(void *), const char *, int, void *, int, void *) {}
 #define RTC_CNTL_BROWN_OUT_REG 0
 
 typedef int esp_err_t;
-typedef struct { int c; } esp_task_wdt_config_t;  
+typedef struct { int timeout_ms, idle_core_mask, trigger_panic; } esp_task_wdt_config_t;  
 void esp_task_wdt_init(const esp_task_wdt_config_t *) {}
 void esp_task_wdt_init(int, int) {}
 void esp_task_wdt_reset() {}

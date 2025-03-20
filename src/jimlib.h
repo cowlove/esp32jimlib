@@ -56,7 +56,10 @@ static inline void ledcWrite(int, int) {}
 
 #ifndef ESP32CORE_V2
 #define esp_task_wdt_init(sec,b) if(1) { esp_task_wdt_config_t c; esp_task_wdt_init(&c); } // include jimlib.h last or this will cause compile errors in other headers
+#else
+void ledcAttachChannel(int pin, int freq, int res, int channel) {}
 #endif
+
 
 inline std::string strfmt(const char *format, ...) { 
     va_list args;

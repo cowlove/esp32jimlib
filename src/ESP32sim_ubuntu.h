@@ -281,7 +281,9 @@ int digitalPinToInterrupt(int) { return 0; }
 void attachInterrupt(int, void (*i)(), int) { intMan.intFunc = i; } 
 void ledcSetup(int, int, int) {}
 void ledcAttachPin(int, int) {}
+#ifndef ESP32CORE_V2
 void ledcAttachChannel(int, int, int, int) {}
+#endif
 void ledcDetachPin(int) {}
 void delayMicroseconds(int m) { _micros += m; intMan.run(); }
 void delay(int m) { delayMicroseconds(m*1000); }

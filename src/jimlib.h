@@ -10,33 +10,34 @@
 #ifndef CSIM
 //#include "DNSServer.h"
 #include <HardwareSerial.h>
-#include <SPI.h>
+//#include <SPI.h>
 #define FS_NO_GLOBALS
 #include <FS.h>
+
 #include "ArduinoOTA.h"
 #include "WiFiUdp.h"
 #include "Wire.h"
 #include <OneWireNg.h>
 #include <OneWireNg_CurrentPlatform.h>
-#include <WiFiClientSecure.h>
+//#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 
 #include <utility>
 #include <regex>
 
 #ifdef ESP32
-#ifndef ESP32CORE_V3
-#include <soc/rtc_cntl_reg.h>
-#endif
+
 #include <soc/soc.h>
-#include <Update.h>			
+#include <Update.h>		
+#include <WiFi.h>	
 #include <HTTPClient.h>
 //#include <WiFiMulti.h>
-#include <ESPmDNS.h>
+//#include <ESPmDNS.h>
 #include <Update.h>			
-#include <WebServer.h>
 #include <SPIFFS.h>
 #include <esp_task_wdt.h>
+#include "esp_mac.h"
+//#include "soc/rtc_cntl_reg.h"
 #else // ESP32
 static inline void esp_task_wdt_reset() {}
 static inline void esp_task_wdt_init(int, int) {}
@@ -52,6 +53,10 @@ static inline void ledcWrite(int, int) {}
 #include <stdarg.h>
 #define DEG2RAD(x) ((x)*M_PI/180)
 #define RAD2DEG(x) ((x)*180/M_PI)
+
+#ifndef ESP32CORE_V2
+#define esp_task_wdt_init(sec,b) if(1) { esp_task_wdt_config_t c; esp_task_wdt_init(&c); } // include jimlib.h last or this will cause compile errors in other headers
+#endif
 
 inline std::string strfmt(const char *format, ...) { 
     va_list args;
@@ -1106,7 +1111,7 @@ public:
 					type = "filesystem";
 					}
 					#ifdef ESP32
-					WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector   
+					//WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector   
 					#endif
 
 					// NOTE: if updating FS this would be the place to unmount FS using FS.end()
@@ -1453,8 +1458,9 @@ class PwmChannel {
 public:		
 	int gradual;
 	PwmChannel(int p, int hz = 50, int c = 0, int g = 0) : pin(p), channel(c), gradual(g) {
-		ledcSetup(channel, hz, 16);
-		ledcAttachPin(pin, channel);
+		//ledcSetup(channel, hz, 16);
+		//ledcAttachPin(pin, channel);
+		ledcAttachChannel(pin, hz, 16, channel);
 	}
 	void setMs(int p) { set(p * 4715 / 1500); };
 	void setPercent(int p) { set(p * 65535 / 100); } 

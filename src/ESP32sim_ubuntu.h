@@ -104,7 +104,9 @@ void xTaskCreate(void (*)(void *), const char *, int, void *, int, void *) {}
 #define WRITE_PERI_REG(a, b) if(0) {}
 #define RTC_CNTL_BROWN_OUT_REG 0
 
-typedef int esp_err_t; 
+typedef int esp_err_t;
+typedef struct { int c; } esp_task_wdt_config_t;  
+void esp_task_wdt_init(const esp_task_wdt_config_t *) {}
 void esp_task_wdt_init(int, int) {}
 void esp_task_wdt_reset() {}
 esp_err_t esp_task_wdt_add(void *) { return 0; }
@@ -279,6 +281,7 @@ int digitalPinToInterrupt(int) { return 0; }
 void attachInterrupt(int, void (*i)(), int) { intMan.intFunc = i; } 
 void ledcSetup(int, int, int) {}
 void ledcAttachPin(int, int) {}
+void ledcAttachChannel(int, int, int, int) {}
 void ledcDetachPin(int) {}
 void delayMicroseconds(int m) { _micros += m; intMan.run(); }
 void delay(int m) { delayMicroseconds(m*1000); }

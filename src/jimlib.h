@@ -56,7 +56,15 @@ static inline void ledcWrite(int, int) {}
 
 #ifndef ESP32CORE_V2
 // core V3
-#define esp_task_wdt_init(sec,b) if(1) { esp_task_wdt_config_t c; c.timeout_ms = (sec)*1000; c.idle_core_mask = 0xff; c.trigger_panic = true; esp_task_wdt_init(&c); } // include jimlib.h last or this will cause compile errors in other headers
+void wdtInit(int sec) {
+	esp_task_wdt_config_t c; 
+	c.timeout_ms = (sec)*1000; 
+	c.idle_core_mask = 0x1; 
+	c.trigger_panic = true; 
+	esp_task_wdt_deinit(); 
+	esp_task_wdt_init(&c);  // include jimlib.h last or this will cause compile errors in other headers
+}
+#define esp_task_wdt_init(sec,b) wdtInit(sec)
 #else
 // core V2
 void ledcAttachChannel(int pin, int freq, int res, int channel) {
@@ -738,8 +746,9 @@ inline std::vector<DsTempData> readTemps(OneWireNg *ow) {
     return rval;
 }
 
-String basename_strip_ext(const char *fn) {
-	String rval(fn); 
+const String &basename_strip_ext(const char *fn) {
+	static String rval;
+	rval = fn; 
 	char *p = strrchr((char *)fn, '/');
 	if (p != NULL) 
 		rval = p + 1;
@@ -962,7 +971,7 @@ class JimWiFi {
 						{"ChloeNet4", "niftyprairie7"},
 						{"Tip of the Spear", "51a52b5354"},  
 						{"Team America", "51a52b5354"},  
-						//{"Station 54", "Local1747"},
+						{"Station 54", "Local1747"},
 						{"TUK-FIRE", "FD priv n3t 20 q4"} };
 
 		//WiFi.disconnect(true);
@@ -1727,9 +1736,9 @@ public:
 		esp_task_wdt_add(NULL);
 
 		Serial.begin(115200);
-		Serial.printf("\n************************\n\n\n "
-			"%s %s " GIT_VERSION " " __DATE__ " " __TIME__ "\n", 
-			getMacAddress().c_str(), basename_strip_ext(__BASE_FILE__));
+		Serial.printf("\n************************\n\n\n"
+			"%s " GIT_VERSION " " __DATE__ " " __TIME__ " %s\n", 
+			basename_strip_ext(__BASE_FILE__), getMacAddress().c_str());
 		getLedPin();
 
 		led.setPercent(30);

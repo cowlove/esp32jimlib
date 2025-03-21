@@ -108,6 +108,7 @@ typedef int esp_err_t;
 typedef struct { int timeout_ms, idle_core_mask, trigger_panic; } esp_task_wdt_config_t;  
 void esp_task_wdt_init(const esp_task_wdt_config_t *) {}
 void esp_task_wdt_init(int, int) {}
+void esp_task_wdt_deinit() {}
 void esp_task_wdt_reset() {}
 esp_err_t esp_task_wdt_add(void *) { return 0; }
 esp_err_t esp_task_wdt_delete(const void *) { return 0; }

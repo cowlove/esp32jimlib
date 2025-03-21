@@ -582,10 +582,13 @@ protected:
 	string filename, defaultStringValue;
 	void writeAsString(const string &s);
 	string readAsString();	
+	static bool initialized;
+public:
+	static void begin();
 };
 
 template<class T> 
-class SPIFFSVariableESP32 : protected SPIFFSVariableESP32Base { 
+class SPIFFSVariableESP32 : public SPIFFSVariableESP32Base { 
 	const T def;
 	T val;
 public:
@@ -937,7 +940,7 @@ static inline void dbg(const char *(format), ...) {
 	Serial.println(buf);
 }
 
-static void webUpgrade(const char *u);
+void webUpgrade(const char *u);
 
 // create a String from a char buf without NULL termination 
 static inline String buf2str(const byte *buf, int len) { 
@@ -1232,6 +1235,7 @@ public:
 	void begin() { 
 		beginRan = true;
 		wdtInit(15);
+		SPIFFSVariableESP32Base::begin();
 
 		Serial.begin(115200);
 		Serial.printf("\n\n\n%s git:" GIT_VERSION " mac:%s time:%05.3fs built:" __DATE__ " " __TIME__ " \n", 

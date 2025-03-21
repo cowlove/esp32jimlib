@@ -668,12 +668,12 @@ void JDisplayUpdateThread(void *p) {
 	JDisplay *jd = (JDisplay *)p;
 	jd->forceUpdate();
 #ifndef UBUNTU	
-	esp_task_wdt_delete(NULL);	
+	//esp_task_wdt_delete(NULL);	
 	while(true) {
 		jd->waitChange(10); 
-		esp_task_wdt_reset();
+		wdtReset();
 		while(logFileBusySPI == false) {
-			esp_task_wdt_reset();
+			wdtReset();
 			if (jd->update(false, true) == false || logFileBusySPI)
 				break;
 		}

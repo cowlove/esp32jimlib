@@ -7,23 +7,13 @@
 #include <vector>
 #include <iterator>
 #include <fcntl.h>
-#ifndef CSIM
-//#include "DNSServer.h"
-#include <HardwareSerial.h>
-//#include <SPI.h>
-#define FS_NO_GLOBALS
-#include <FS.h>
-
-#include "ArduinoOTA.h"
-#include "WiFiUdp.h"
-#include "Wire.h"
-#include <OneWireNg.h>
-#include <OneWireNg_CurrentPlatform.h>
-//#include <WiFiClientSecure.h>
-#include <PubSubClient.h>
-
 #include <utility>
 #include <regex>
+
+#ifndef CSIM
+#include "ArduinoOTA.h"
+#include "WiFiUdp.h"
+
 
 
 // starting jimlib.cpp cleanup
@@ -31,22 +21,9 @@
 // real	0m16.728s
 
 #ifdef ESP32
-
-#include <soc/soc.h>
-#include <Update.h>		
 #include <WiFi.h>	
-#include <HTTPClient.h>
-//#include <WiFiMulti.h>
-//#include <ESPmDNS.h>
-#include <Update.h>			
-#include <SPIFFS.h>
-#include <esp_task_wdt.h>
-#include "esp_mac.h"
-//#include "soc/rtc_cntl_reg.h"
+//#include <SPIFFS.h>
 #else // ESP32
-static inline void esp_task_wdt_reset() {}
-static inline void esp_task_wdt_init(int, int) {}
-static inline void esp_task_wdt_add(void *) {}
 static inline void ledcSetup(int, int, int) {}
 static inline void ledcAttachPin(int, int) {}
 static inline void ledcWrite(int, int) {}
@@ -59,86 +36,17 @@ static inline void ledcWrite(int, int) {}
 #define DEG2RAD(x) ((x)*M_PI/180)
 #define RAD2DEG(x) ((x)*180/M_PI)
 
-#ifndef ESP32CORE_V2
-// core V3
 void wdtInit(int sec);
-#define esp_task_wdt_init(sec,b) wdtInit(sec)
-#else
-// core V2
-void ledcAttachChannel(int pin, int freq, int res, int channel) {
-	ledcSetup(channel, freq, res);
-	ledcAttachPin(pin, channel);
-}
-#endif
+void wdtReset();
+void ledcInit(int pin, int freq, int res, int channel); 
+
+std::string strfmt(const char *format, ...);
+String Sfmt(const char *format, ...);
+std::string sfmt(const char *format, ...);
 
 
-inline std::string strfmt(const char *format, ...) { 
-    va_list args;
-    va_start(args, format);
-	char buf[256];
-	vsnprintf(buf, sizeof(buf), format, args);
-    va_end(args);
-	return std::string(buf);
-}
-
-inline String Sfmt(const char *format, ...) { 
-    va_list args;
-    va_start(args, format);
-	char buf[256];
-	vsnprintf(buf, sizeof(buf), format, args);
-    va_end(args);
-	return String(buf);
-}
-
-inline std::string sfmt(const char *format, ...) { 
-    va_list args;
-    va_start(args, format);
-	char buf[256];
-	vsnprintf(buf, sizeof(buf), format, args);
-    va_end(args);
-	return std::string(buf);
-}
-
-inline int scanI2c() { 
-	int count = 0;
-	for (byte i = 8; i < 120; i++)
-	{
-			Wire.beginTransmission (i);          // Begin I2C transmission Address (i)
-			if (Wire.endTransmission () == 0)  // Receive 0 = success (ACK response) 
-			{
-					Serial.print ("Found address: ");
-					Serial.print (i, DEC);
-					Serial.print (" (0x");
-					Serial.print (i, HEX);     // PCF8574 7 bit address
-					Serial.println (")");
-					count++;
-			}
-	}
-	Serial.print ("Found ");      
-	Serial.print (count, DEC);        // numbers of devices
-	Serial.println (" device(s).");
-
-	return count;
-}
-
-inline void printPins() { 
-        for (int n = 0; n <= 1; n++) {
-                pinMode(n, INPUT_PULLUP); 
-                Serial.printf("%02d:%d ", n, digitalRead(n));
-        }
-        for (int n = 2; n <= 5; n++) {
-                pinMode(n, INPUT_PULLUP); 
-                Serial.printf("%02d:%d ", n, digitalRead(n));
-        }
-        for (int n = 12; n <= 39; n++) { 
-                pinMode(n, INPUT_PULLUP); 
-                Serial.printf("%02d:%d ", n, digitalRead(n));
-        }
-        Serial.print("\n");
-#ifdef ESP32
-		esp_task_wdt_reset();
-#endif
-}
+int scanI2c();
+void printPins();
 
 #ifdef ESP32
 class FakeMutex {
@@ -185,31 +93,13 @@ class ScopedMutex {
 };
 #endif
 
-
 class LineBuffer {
 public:
 	char line[1024];
 	char len = 0;
-	int add(char c, std::function<void(const char *)> f = NULL) {
-		int r = 0;
-		if (c != '\r' && c != '\n')
-			line[len++] = c; 
-		if (len >= sizeof(line) - 1 || c == '\n') {
-			r = len;
-			line[len] = 0;
-			len = 0;
-			if (f != NULL) { 
-				f(line);
-			}
-		}
-		return r;
-	}
-	void add(const char *b, int n, std::function<void(const char *)> f) { 
-		for (int i = 0; i < n; i++) {
-			add(b[i], f); 
-		}
-	}
-	void add(const uint8_t *b, int n, std::function<void(const char *)> f) { add((const char *)b, n, f); } 
+	int add(char c, std::function<void(const char *)> f = NULL);
+	void add(const char *b, int n, std::function<void(const char *)> f);
+	void add(const uint8_t *b, int n, std::function<void(const char *)> f); 
 };
 
 class IntervalTimer {
@@ -540,7 +430,7 @@ public:
 
 #ifdef ESP32
 template <typename Out>
-void split(const std::string &s, char delim, Out result) {
+inline void split(const std::string &s, char delim, Out result) {
     std::istringstream iss(s);
     std::string item;
     while (std::getline(iss, item, delim)) {
@@ -548,7 +438,7 @@ void split(const std::string &s, char delim, Out result) {
     }
 }
 
-std::vector<std::string> split(const std::string &s, char delim) {
+static inline std::vector<std::string> split(const std::string &s, char delim) {
     std::vector<std::string> elems;
     split(s, delim, std::back_inserter(elems));
     return elems;
@@ -643,7 +533,7 @@ public:
 	}
 };
 
-std::string nmeaChecksum(const std::string &s) { 
+static inline std::string nmeaChecksum(const std::string &s) { 
 	char check = 0;
 	for (const char &c : s)  
 		check ^= c;
@@ -652,99 +542,17 @@ std::string nmeaChecksum(const std::string &s) {
 	return std::string("$") + s + std::string(buf);	
 }
 
-//
-// DS18 one-wire temperature sensor library
-
-
-/* DS therms commands */
-#define CMD_CONVERT_T           0x44
-#define CMD_COPY_SCRATCHPAD     0x48
-#define CMD_WRITE_SCRATCHPAD    0x4E
-#define CMD_RECALL_EEPROM       0xB8
-#define CMD_READ_POW_SUPPLY     0xB4
-#define CMD_READ_SCRATCHPAD     0xBE
-
-/* supported DS therms families */
-#define DS18S20     0x10
-#define DS1822      0x22
-#define DS18B20     0x28
-#define DS1825      0x3B
-#define DS28EA00    0x42
-
-inline void swapEndian(void *p1, void *p2, int s) { 
-	for(int n = 0; n < s; n++) 
-		((char *)p1)[n] = ((char *)p2)[s - n - 1];
-}
 
 struct DsTempData { 
 	uint64_t id;
 	uint64_t time;
 	float degC;
 };
-inline std::vector<DsTempData> readTemps(OneWireNg *ow) { 
-	std::vector<DsTempData> rval;
-    OneWireNg::Id id;
-    OneWireNg::ErrorCode ec;
-    ow->searchReset();
 
-    do
-    {
-        ec = ow->search(id);
-		//Serial.printf("ec: %d\n", ec);
-        //if (!(ec == OneWireNg::EC_MORE || ec == OneWireNg::EC_NO_DEVS))
-        //    break;
+class OneWireNg; 
+std::vector<DsTempData> readTemps(OneWireNg *ow);
 
-        /* start temperature conversion */
-        ow->addressSingle(id);
-        ow->writeByte(CMD_CONVERT_T);
-
-        delay(750);
-
-        uint8_t touchScrpd[] = {
-            CMD_READ_SCRATCHPAD,
-            /* the read scratchpad will be placed here (9 bytes) */
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
-        };
-
-        ow->addressSingle(id);
-        ow->touchBytes(touchScrpd, sizeof(touchScrpd));
-        uint8_t *scrpd = &touchScrpd[1];  /* scratchpad data */
-
-        if (OneWireNg::crc8(scrpd, 8) != scrpd[8]) {
-            //Serial.println("  Invalid CRC!");
-            continue;
-        }
-
-        long temp = ((long)(int8_t)scrpd[1] << 8) | scrpd[0];
-
-        if (id[0] != DS18S20) {
-            unsigned res = (scrpd[4] >> 5) & 3;
-            temp = (temp >> (3-res)) << (3-res);  /* zeroed undefined bits */
-            temp = (temp*1000)/16;
-        } else
-        if (scrpd[7]) {
-            temp = 1000*(temp >> 1) - 250;
-            temp += 1000*(scrpd[7] - scrpd[6]) / scrpd[7];
-        } else {
-            /* shall never happen */
-            temp = (temp*1000)/2;
-			continue;
-        }
-		
-		uint64_t lid;
-		swapEndian(&lid, &id, sizeof(lid));
-		float ftemp = temp / 1000.0;
-		DsTempData dsData;
-		dsData.degC = temp / 1000.0;
-		dsData.id = lid;
-		dsData.time = millis();
-		
-		rval.push_back(dsData);
-    } while (ec == OneWireNg::EC_MORE);
-    return rval;
-}
-
-const String &basename_strip_ext(const char *fn) {
+static inline const String &basename_strip_ext(const char *fn) {
 	static String rval;
 	rval = fn; 
 	char *p = strrchr((char *)fn, '/');
@@ -757,177 +565,47 @@ const String &basename_strip_ext(const char *fn) {
 }
 
 
-const String &getMacAddress() {
-	static uint8_t baseMac[6] = {0xff};
-#ifdef ESP32
-	// Get MAC address for WiFi station
-	esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
-#endif
-	static char baseMacChr[18] = {0};
-	static String mac;
-	sprintf(baseMacChr, "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
-	mac = baseMacChr;
-	return mac;
-}
+const String &getMacAddress();
 
-#if 0 
-const char* host = "esp32";
-const char* ssid = "xxx";
-const char* password = "xxxx";
-
-WebServer server(80);
-
-/*
- * Login page
- */
-
-const char* loginIndex = 
- "<form name='loginForm'>"
-    "<table width='20%' bgcolor='A09F9F' align='center'>"
-        "<tr>"
-            "<td colspan=2>"
-                "<center><font size=4><b>ESP32 Login Page</b></font></center>"
-                "<br>"
-            "</td>"
-            "<br>"
-            "<br>"
-        "</tr>"
-        "<td>Username:</td>"
-        "<td><input type='text' size=25 name='userid'><br></td>"
-        "</tr>"
-        "<br>"
-        "<br>"
-        "<tr>"
-            "<td>Password:</td>"
-            "<td><input type='Password' size=25 name='pwd'><br></td>"
-            "<br>"
-            "<br>"
-        "</tr>"
-        "<tr>"
-            "<td><input type='submit' onclick='check(this.form)' value='Login'></td>"
-        "</tr>"
-    "</table>"
-"</form>"
-"<script>"
-    "function check(form)"
-    "{"
-    "if(form.userid.value=='admin' && form.pwd.value=='admin')"
-    "{"
-    "window.open('/serverIndex')"
-    "}"
-    "else"
-    "{"
-    " alert('Error Password or Username')/*displays error message*/"
-    "}"
-    "}"
-"</script>";
- 
-/*
- * Server Index Page
- */
- 
-const char* serverIndex = 
-"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
-"<form method='POST' action='#' enctype='multipart/form-data' id='upload_form'>"
-   "<input type='file' name='update'>"
-        "<input type='submit' value='Update'>"
-    "</form>"
- "<div id='prg'>progress: 0%</div>"
- "<script>"
-  "$('form').submit(function(e){"
-  "e.preventDefault();"
-  "var form = $('#upload_form')[0];"
-  "var data = new FormData(form);"
-  " $.ajax({"
-  "url: '/update',"
-  "type: 'POST',"
-  "data: data,"
-  "contentType: false,"
-  "(process)Data:false,"
-  "xhr: function() {"
-  "var xhr = new window.XMLHttpRequest();"
-  "xhr.upload.addEventListener('progress', function(evt) {"
-  "if (evt.lengthComputable) {"
-  "var per = evt.loaded / evt.total;"
-  "$('#prg').html('progress: ' + Math.round(per*100) + '%');"
-  "}"
-  "}, false);"
-  "return xhr;"
-  "},"
-  "success:function(d, s) {"
-  "console.log('success!')" 
- "},"
- "error: function (a, b, c) {"
- "}"
- "});"
- "});"
- "</script>";
-#endif
-
-int spiffsInit = 0;
 using std::string;
 template<class T> bool fromString(const string &s, T&v);
-template<> bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d", &v) == 1; }
-template<> bool fromString(const string &s, string &v) { v = s; return true; }
+template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d", &v) == 1; }
+template<> inline bool fromString(const string &s, string &v) { v = s; return true; }
 
 template<class T> string toString(const T&v);
-template<> string toString(const int &v) { return sfmt("%d", v); }
-template<> string toString(const string &s) { return s; }
+template<> inline string toString(const int &v) { return sfmt("%d", v); }
+template<> inline string toString(const string &s) { return s; }
+
+extern int SpiffsInit;
+class SPIFFSVariableESP32Base { 
+protected:
+	string filename, defaultStringValue;
+	void writeAsString(const string &s);
+	string readAsString();	
+};
 
 template<class T> 
-class SPIFFSVariableESP32 { 
-	String filename;
+class SPIFFSVariableESP32 : protected SPIFFSVariableESP32Base { 
 	const T def;
 	T val;
 public:
-	SPIFFSVariableESP32(const char *f, const T &d) : filename(f), def(d) {}
+	SPIFFSVariableESP32(const char *f, const T &d) : def(d), val(d) {
+		filename = f;
+		defaultStringValue = toString(def);
+	}
 	operator const T() {
 		val = def;
-		if (!spiffsInit) { 
-			SPIFFS.begin();
-			spiffsInit = 1;
-		}
-		fs::File file = SPIFFS.open(filename.c_str(), "r");
-		size_t bytes_read = 0;
-		if (file) { 
-			uint8_t buf[1024]; // TODO: read the whole file 
-			bytes_read = file.read(buf, sizeof(buf) - 1);
-			//printf("read %d bytes from %s\n", bytes_read, filename.c_str());
-			file.close();
-			if (bytes_read > 0) {
-				buf[bytes_read] = 0;
-				string s((char *)buf); 
-				fromString(s, val);
-				printf("SPIFFSVariableESP32 read file %s %s\n", filename.c_str(), s.c_str());
-			}
-		}
-		if (bytes_read <= 0) {
-			this->write(val);
-		}
+		string s = readAsString();
+		fromString(s, val);
 		return val;
 	} 
 	SPIFFSVariableESP32 & operator=(const T&v) { 
 		if (val != v) {
-			this->write(v);
 			val = v;
+			string s = toString(val);
+			this->writeAsString(s);
 		}
 		return *this;
-	}
-	void write(const T&v) { 
-		if (!spiffsInit) { 
-			SPIFFS.begin();
-			spiffsInit = 1;
-		}	
-		fs::File file = SPIFFS.open(filename.c_str(), "w");
-		if (file) { 
-			string s = toString(v);
-			file.write((const uint8_t *)s.c_str(), s.length());
-			file.close();
-			printf("SPIFFSVariableESP32 wrote file %s %s\n", filename.c_str(), s.c_str());
-		} else { 
-			printf("SPIFFSVariableESP32 error writing file %s, formatting SPIFFS\n", filename.c_str());
-			SPIFFS.format();
-		}
 	}
 };
 
@@ -986,7 +664,7 @@ class JimWiFi {
 					Serial.printf("Connected\n");
 					return;
 				}
-				esp_task_wdt_reset();
+				wdtReset();
 				delay(100);
 			}
 		}
@@ -997,9 +675,9 @@ class JimWiFi {
 		//WiFi.mode(WIFI_STA);
 		WiFi.setSleep(false);
 		//delay(1000);
-		esp_task_wdt_reset();
+		wdtReset();
 		int n = WiFi.scanNetworks();
-		esp_task_wdt_reset();
+		wdtReset();
 		Serial.println("scan done");
 		
 		if (n == 0) {
@@ -1036,7 +714,7 @@ class JimWiFi {
 				return;
 			}
 			delay(100);
-			esp_task_wdt_reset();
+			wdtReset();
 		}
 	}
 public:
@@ -1070,50 +748,6 @@ public:
 		if (WiFi.status() == WL_CONNECTED) { 
 			if (firstConnect ==  true) { 
 				firstConnect = false;
-#if  0
-				server.on("/", HTTP_GET, []() {
-				server.sendHeader("Connection", "close");
-				server.send(200, "text/html", loginIndex);
-				});
-				server.on("/serverIndex", HTTP_GET, []() {
-				server.sendHeader("Connection", "close");
-				server.send(200, "text/html", serverIndex);
-				});
-				/*handling uploading firmware file */
-				server.on("/update", HTTP_POST, []() {
-				server.sendHeader("Connection", "close");
-				server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-				ESP.restart();
-				}, [this]() {
-				HTTPUpload& upload = server.upload();
-				esp_task_wdt_reset();
-
-				if (upload.status == UPLOAD_FILE_START) {
-					if (this->otaFunc != NULL) { 
-						this->otaFunc();
-					}
-					Serial.printf("Update: %s\n", upload.filename.c_str());
-					if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
-					Update.printError(Serial);
-					}
-				} else if (upload.status == UPLOAD_FILE_WRITE) {
-					//Serial.printf("Update: write %d bytes\n", upload.currentSize);
-					esp_task_wdt_reset();	
-					/* flashing firmware to ESP*/
-					if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-					Update.printError(Serial);
-					}
-					delay(10);
-				} else if (upload.status == UPLOAD_FILE_END) {
-					if (Update.end(true)) { //true to set the size to the current progress
-					Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
-					} else {
-					Update.printError(Serial);
-					}
-				}
-				});
-				server.begin();
-#endif
 
 				ArduinoOTA.onStart([this]() {
 					String type;
@@ -1137,7 +771,7 @@ public:
 				});
 				ArduinoOTA.onProgress([&](unsigned int progress, unsigned int total) {
 						//Serial.printf("Progress: %u%%\n", (progress / (total / 100)));
-						esp_task_wdt_reset();
+						wdtReset();
 						updateInProgress = true;
 						delay(30);
 				});
@@ -1263,11 +897,6 @@ inline float random01() { 	return rand() / (RAND_MAX + 1.0); }
 #define GIT_VERSION "unknown-git-version"
 #endif
 
-#ifdef GIT_VERSION
-char _GIT_VERSION[] = GIT_VERSION;
-#else
-char _GIT_VERSION[] = "undefined";
-#endif
 
 static inline float avgAnalogRead(int pin, int avg = 1024) { 
 	float bv = 0;
@@ -1298,7 +927,7 @@ static inline int hex2bin(const char *in, char *out, int inLength) {
         return inLength / 2;
 }
 
-void dbg(const char *(format), ...) { 
+static inline void dbg(const char *(format), ...) { 
 	va_list args;
 	va_start(args, format);
 	char buf[256];
@@ -1308,77 +937,10 @@ void dbg(const char *(format), ...) {
 	Serial.println(buf);
 }
 
-#ifdef ESP32 // TODO we could do this on the 8266
-static void webUpgrade(const char *u) {
-	//WiFiClientSecure wc;
-	//wc.setInsecure();
-	HTTPClient client; 
-
-	int offset = 0;
-	int len = 1024 * 16;
-	int errors = 0;
-	int fwLen = 0;
- 
-	Update.begin(UPDATE_SIZE_UNKNOWN);
-	Serial.println("Updating firmware...");
-
-	while(true) { 
-		esp_task_wdt_reset();
-		String url = String(u) + Sfmt("?len=%d&offset=%d", len, offset);
-		dbg("offset %d, len %d, url %s", offset, len, url.c_str());
-		//client.begin(wc, url);
-		client.begin(url);
-		int resp = client.GET();
-		//dbg("HTTPClient.get() returned %d\n", resp);
-		if(resp != 200) {
-			dbg("Get failed\n");
-			Serial.print(client.getString());
-			delay(5000);
-			if (++errors > 10) { 
-				return;
-			}
-			continue;
-		}
-		int	totalLength = client.getSize();
-		int len = totalLength;
-		uint8_t bbuf[128], tbuf[256];
-	
-		//Serial.printf("FW Size: %u\n",totalLength);
-		if (totalLength == 0) { 
-			Serial.printf("\nUpdate Success, Total Size: %u\nRebooting...\n", fwLen);
-			Update.end(true);
-			ESP.restart();
-			return;				
-		}
-				
-		WiFiClient * stream = client.getStreamPtr();
-		while(client.connected() && len > 0) {
-			int avail = stream->available();
-			avail = avail & 0xfffffe; // don't split 2-byte hex across buffers
-			//dbg("Avail %d %d", stream->available(), avail);
-			if(avail) {
-				int c = stream->readBytes(tbuf, ((avail > sizeof(tbuf)) ? sizeof(tbuf) : avail));
-				if (c > 0) {
-					hex2bin((const char *)tbuf, (char *)bbuf, c);
-					//if (c % 2 == 1) 
-					//	dbg("Update with %d, avail %d", c, avail);
-					Update.write(bbuf, c / 2);
-					fwLen += c / 2;
-					if(len > 0) {
-						len -= c;
-					}
-				}
-			}
-			delay(1);
-		}	
-		client.end();
-		offset += totalLength / 2;
-	}
-}
-#endif
+static void webUpgrade(const char *u);
 
 // create a String from a char buf without NULL termination 
-String buf2str(const byte *buf, int len) { 
+static inline String buf2str(const byte *buf, int len) { 
   String s;
   for (int i = 0; i < len; i++) {
 	s += (char)buf[i];
@@ -1387,83 +949,26 @@ String buf2str(const byte *buf, int len) {
 }
 
 // connects to an mqtt server, publish stuff on <name>, subscribe to <name>/in
-
+class PubSubClient;
 class MQTTClient { 
 	WiFiClient espClient;
-	void callBack(char *topic, byte *p, unsigned int l) {
-		if (userCallback != NULL) { 
-			userCallback(String(topic), buf2str(p, l));
-		}		
-	}
+	void callBack(char *topic, byte *p, unsigned int l);
 	std::function<void(String,String)> userCallback = NULL;
+	PubSubClient *client = NULL;
 public:
-        String topicPrefix, server;
+    String topicPrefix, server;
 	bool active;
-	PubSubClient client;
 	void setCallback(std::function<void(String,String)> cb) { userCallback = cb; }
-	MQTTClient(const char *s, const char *t, std::function<void(String,String)> cb = NULL, bool a = true) : 
-		active(a), server(s), topicPrefix(t), client(espClient), userCallback(cb) {
-	}
-	void publish(const char *suffix, const char *m) { 
-		if (active) { 
-			String t = topicPrefix + "/" + suffix;
-			client.publish(t.c_str(), m);
-		}
-	}
-	void publish(const char *suffix, const String &m) {
-		 publish(suffix, m.c_str()); 
-	}
-	void pub(const char *m) { publish("out", m); } 
-	void reconnect() {
-	// Loop until we're reconnected
-		if (active == false || WiFi.status() != WL_CONNECTED || client.connected()) 
-			return;
-		client.setServer(server.c_str(), 1883);
-		Serial.println("MQTT connecting...");
-		if (client.connect((topicPrefix + getMacAddress()).c_str())) {
-			client.subscribe((topicPrefix + "/in").c_str());
-			client.setCallback([this](char* topic, byte* p, unsigned int l) {
-				this->callBack(topic, p, l);
-			});
-			std::string s = strfmt("MQTT connected uptime %.1f sec %s %s %s " GIT_VERSION " built " __DATE__ " " __TIME__ , 
-				millis() / 1000.0, getMacAddress().c_str(),  
-				WiFi.localIP().toString().c_str(), basename_strip_ext(__BASE_FILE__).c_str());
-			publish("sys", s.c_str());
-			Serial.println(s.c_str());
-		} else {
-			Serial.print("failed, rc=");
-			Serial.print(client.state());
-		}
-	}
-	void dprintf(const char *format, ...) { 
-		va_list args;
-		va_start(args, format);
-        char buf[256];
-        vsnprintf(buf, sizeof(buf), format, args);
-	    va_end(args);
-		client.publish((topicPrefix + "/debug").c_str(), buf);
-	}
-	void run() { 
-		if (active) { 
-			client.loop();
-			reconnect();
-		}
-	}
+	MQTTClient(const char *s, const char *t, std::function<void(String,String)> cb = NULL, bool a = true);
+	void publish(const char *suffix, const char *m);
+	void publish(const char *suffix, const String &m);
+	void pub(const char *m);
+	void reconnect();
+	void dprintf(const char *format, ...);
+	void run();
 };
 
-#ifndef ESP32
-#define PROGMEM
-#endif
-
-int getLedPin() { 
-	const String mac = getMacAddress(); 
-	if (mac == PROGMEM "349454C12BB0") return 5; // Lilygo LiPo board
-	if (mac == PROGMEM "9C9C1FC9BE94") return 2;
-	if (mac == PROGMEM "9C9C1FCB0920") return 2;
-	if (mac == PROGMEM "2462ABDDCB34") return 19; // TTGO 1.8 TFT board 
-	Serial.printf("MAC %s not found in getLedPin, defaulting to pin 2\n", mac.c_str());
-	return 2;
-}
+int getLedPin();
 
 
 class PwmChannel {
@@ -1533,12 +1038,8 @@ public:
 	}
 };
 
-#ifndef ESP32
-#define PROGMEM
-#endif
-
 #if 1 // TODO - this could move back to supporting ESP8266
-using namespace std;
+using std::smatch;
 
 // TODO: replace "get xxx" hook with making = and white space optional in 
 // "set xxx" hook, just use "set xxx" to show command
@@ -1602,12 +1103,12 @@ public:
 	template<typename T> const char *formatOf();
 };
 
-template<> const char *CommandLineInterfaceESP32::formatOf<float>() { return "%f"; }
-template<> const char *CommandLineInterfaceESP32::formatOf<int>() { return "%i"; }
-template<> const char *CommandLineInterfaceESP32::formatOf<unsigned int>() { return "%x"; }
+template<> inline const char *CommandLineInterfaceESP32::formatOf<float>() { return "%f"; }
+template<> inline const char *CommandLineInterfaceESP32::formatOf<int>() { return "%i"; }
+template<> inline const char *CommandLineInterfaceESP32::formatOf<unsigned int>() { return "%x"; }
 
 template<>
-void CommandLineInterfaceESP32::hookRaw<string>(const char *pat, string *v) {
+inline void CommandLineInterfaceESP32::hookRaw<string>(const char *pat, string *v) {
 	on(pat, [v](const char *, smatch m) { 
 		if (m.size() > 1 && m.str(1).length() > 0)
 			*v = m.str(1).c_str();
@@ -1615,7 +1116,7 @@ void CommandLineInterfaceESP32::hookRaw<string>(const char *pat, string *v) {
 	});
 }
 template<>
-void CommandLineInterfaceESP32::hookRaw<String>(const char *pat, String *v) {
+inline void CommandLineInterfaceESP32::hookRaw<String>(const char *pat, String *v) {
 	on(pat, [v](const char *, smatch m) { 
 		if (m.size() > 1 && m.str(1).length() > 0)
 			*v = m.str(1).c_str();
@@ -1715,9 +1216,9 @@ public:
 		thisRun = micros();
 		forceTicksNow = false;
 
-		esp_task_wdt_reset();
+		wdtReset();
 		jw.run(); 
-		esp_task_wdt_reset();
+		wdtReset();
 		mqtt.run(); 
 		led.run();
 		while(parseSerial == true && Serial.available()) { 
@@ -1730,8 +1231,7 @@ public:
 	}
 	void begin() { 
 		beginRan = true;
-		esp_task_wdt_init(15, true);
-		esp_task_wdt_add(NULL);
+		wdtInit(15);
 
 		Serial.begin(115200);
 		Serial.printf("\n\n\n%s git:" GIT_VERSION " mac:%s time:%05.3fs built:" __DATE__ " " __TIME__ " \n", 
@@ -1791,6 +1291,7 @@ public:
 
 #endif
 
+#if 0 // should work, just move to jimlib.cpp
 class TempSensor { 
 	public:
 	#define OWNG OneWireNg_CurrentPlatform 
@@ -1809,8 +1310,9 @@ class TempSensor {
 		return -999.0;
 	}
 };
+#endif 
 
-inline void digitalToggle(int pin) { pinMode(pin, OUTPUT); digitalWrite(pin, !digitalRead(pin)); }
+static inline void digitalToggle(int pin) { pinMode(pin, OUTPUT); digitalWrite(pin, !digitalRead(pin)); }
 
 // registers SETTEMP, CURRENTTEMP, HIST commands with CLI.  Returns heat on/off
 // value from check() function 
@@ -1847,4 +1349,7 @@ public:
 
 
 //#endif
+#ifdef CSIM
+#include "jimlib.cpp"
+#endif
 #endif //#ifndef INC_JIMLIB_H

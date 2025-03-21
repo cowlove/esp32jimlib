@@ -466,7 +466,7 @@ struct FakeWiFi {
 	String SSID(int i = 0) { return String("FakeWiFi"); }
 	int waitForConnectResult() { return 0; }
 	int scanNetworks() { return 0; }
-	String RSSI(int i = 0) { return String(); }
+	int RSSI(int i = 0) { return 63; }
 	void disconnect() {}
 	void reconnect() {}
 	String macAddress() { return String("DEADBEEFFF"); }
@@ -684,8 +684,10 @@ typedef struct {
 } wifi_init_config_t;
 
 #define WIFI_INIT_CONFIG_DEFAULT() {0}
+typedef struct { uint8_t *src_addr; } esp_now_recv_info;
 
 typedef void (*esp_now_recv_cb_t)(const uint8_t *mac_addr, const uint8_t *data, int data_len);
+typedef void (*esp_now_recv_cb_t_v3)(const esp_now_recv_info *info, const uint8_t *data, int data_len);
 typedef void (*esp_now_send_cb_t)(const uint8_t *mac_addr, esp_now_send_status_t status);
 esp_now_send_cb_t ESP32_esp_now_send_cb = NULL;
 esp_now_recv_cb_t ESP32_esp_now_recv_cb = NULL, ESP32_esp_now_csim_send_handler = 0;
@@ -730,6 +732,7 @@ int esp_wifi_start() { return ESP_OK; }
 int esp_wifi_set_channel(int, int) { return ESP_OK; } 
 int esp_now_register_send_cb(esp_now_send_cb_t cb) { ESP32_esp_now_send_cb = cb; return ESP_OK; }
 int esp_now_register_recv_cb(esp_now_recv_cb_t cb) { ESP32_esp_now_recv_cb = cb; return ESP_OK; }
+int esp_now_register_recv_cb(esp_now_recv_cb_t_v3 cb) { return ESP_OK; }
 int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
 	if (ESP32_esp_now_send_cb != NULL)
 		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 

@@ -16,9 +16,12 @@ void printMac(const uint8_t *x) {
   Serial.printf("%08x=%02x:%02x:%02x:%02x:%02x:%02x ", 
             x, x[0], x[1], x[2], x[3], x[4], x[5]);
 }
-void ESPNowMuxOnRecv(const uint8_t * mac, const uint8_t *in, int len);
-void ESPNowMuxOnSend(const uint8_t *mac_addr, esp_now_send_status_t s);
 
+void ESPNowMuxOnRecv(const uint8_t *mac, const uint8_t *in, int len);
+void ESPNowMuxOnSend(const uint8_t *mac_addr, esp_now_send_status_t s);
+void ESPNowMuxOnRecv_v3(const esp_now_recv_info *info, const uint8_t *in, int len) { 
+    ESPNowMuxOnRecv(info->src_addr, in, len);
+}
 class ESPNowMux { 
   uint32_t lastSend = 0;
 public:
@@ -55,7 +58,11 @@ public:
       esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
       esp_now_deinit();
       esp_now_init();
-      esp_now_register_recv_cb(ESPNowMuxOnRecv);
+#ifdef ESP32CORE_V2
+      esp_now_register_recv_cb(ESPNowMuxOnRecv_v3);
+#else
+      esp_now_register_recv_cb(ESPNowMuxOnRecv_v3);
+#endif
       esp_now_register_send_cb(ESPNowMuxOnSend);
       memcpy(broadcastPeerInfo.peer_addr, broadcastAddress, sizeof(broadcastAddress));
       broadcastPeerInfo.channel = chan;  

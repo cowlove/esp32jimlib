@@ -1736,9 +1736,8 @@ public:
 		esp_task_wdt_add(NULL);
 
 		Serial.begin(115200);
-		Serial.printf("\n************************\n\n\n"
-			"%s git:" GIT_VERSION " built:" __DATE__ " " __TIME__ " mac:%s\n", 
-			basename_strip_ext(__BASE_FILE__).c_str(), getMacAddress().c_str());
+		Serial.printf("\n\n\n%s git:" GIT_VERSION " mac:%s time:%05.3fs built:" __DATE__ " " __TIME__ " \n", 
+			basename_strip_ext(__BASE_FILE__).c_str(), getMacAddress().c_str(), millis() / 1000.0);
 		getLedPin();
 
 		led.setPercent(30);
@@ -1748,8 +1747,8 @@ public:
 				jw.debug = mqtt.active = true;  
 				out("JStuff: forcing debug and mqtt.active due to WiFi network");
  			}
-			Serial.printf("Connected to AP '%s' in %dms, IP=%s, channel=%d\n",
-				WiFi.SSID().c_str(), millis(), WiFi.localIP().toString().c_str(), WiFi.channel());
+			Serial.printf("Connected to AP '%s' in %dms, IP=%s, channel=%d, RSSI=%d\n",
+				WiFi.SSID().c_str(), millis(), WiFi.localIP().toString().c_str(), WiFi.channel(), WiFi.RSSI());
 			if (onConn != NULL) { 
 				onConn();
 			}

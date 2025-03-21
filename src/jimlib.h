@@ -1737,8 +1737,8 @@ public:
 
 		Serial.begin(115200);
 		Serial.printf("\n************************\n\n\n"
-			"%s " GIT_VERSION " " __DATE__ " " __TIME__ " %s\n", 
-			basename_strip_ext(__BASE_FILE__), getMacAddress().c_str());
+			"%s git:" GIT_VERSION " built:" __DATE__ " " __TIME__ " mac:%s\n", 
+			basename_strip_ext(__BASE_FILE__).c_str(), getMacAddress().c_str());
 		getLedPin();
 
 		led.setPercent(30);

@@ -2,8 +2,10 @@
 #define TTGO_TS_H
 #include "jimlib.h"
 
+#ifndef CSIM
 #include <mySD.h> // Add "EXCLUDE_DIRS=esp32-micro-sdcard" to Makefile if this breaks ESP8266 builds
 #define File ext::File
+#endif
 
 // mutex to serialize SD card and TFT writes. 
 Mutex mutexSPI;

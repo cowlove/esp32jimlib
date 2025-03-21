@@ -25,6 +25,11 @@
 #include <utility>
 #include <regex>
 
+
+// starting jimlib.cpp cleanup
+// Sketch uses 1346572 bytes (68%) of program storage space. Maximum is 1966080 bytes.
+// real	0m16.728s
+
 #ifdef ESP32
 
 #include <soc/soc.h>

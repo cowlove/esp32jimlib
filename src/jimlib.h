@@ -56,14 +56,7 @@ static inline void ledcWrite(int, int) {}
 
 #ifndef ESP32CORE_V2
 // core V3
-void wdtInit(int sec) {
-	esp_task_wdt_config_t c; 
-	c.timeout_ms = (sec)*1000; 
-	c.idle_core_mask = 0x1; 
-	c.trigger_panic = true; 
-	esp_task_wdt_deinit(); 
-	esp_task_wdt_init(&c);  // include jimlib.h last or this will cause compile errors in other headers
-}
+void wdtInit(int sec);
 #define esp_task_wdt_init(sec,b) wdtInit(sec)
 #else
 // core V2

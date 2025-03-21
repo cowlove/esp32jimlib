@@ -32,6 +32,7 @@ void wdtInit(int sec) {
 	c.trigger_panic = true; 
 	esp_task_wdt_deinit(); 
 	esp_task_wdt_init(&c);  // include jimlib.h last or this will cause compile errors in other headers
+	esp_task_wdt_add(NULL);
 #else	
 	esp_task_wdt_init(sec, false);
 	esp_task_wdt_add(NULL);
@@ -411,7 +412,6 @@ std::vector<DsTempData> readTemps(OneWireNg *ow) {
     } while (ec == OneWireNg::EC_MORE);
     return rval;
 }
-
 
 int getLedPin() { 
 	const String mac = getMacAddress(); 

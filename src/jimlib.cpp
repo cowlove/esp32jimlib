@@ -282,31 +282,34 @@ const String &getMacAddress() {
 	return mac;
 }
 
+SPIFFSVariableESP32Base::SPIFFSVariableESP32Base() { 
+	SPIFFS.begin();
+}
 
 void SPIFFSVariableESP32Base::begin() { 
-	SPIFFS.begin();
 	initialized = true;
 }
 bool SPIFFSVariableESP32Base::initialized = false;
 
 void SPIFFSVariableESP32Base::writeAsString(const string &s) { 
-	if (initialized == false)  
-		return;
 	fs::File file = SPIFFS.open(filename.c_str(), "w");
 	if (file) { 
 		file.write((const uint8_t *)s.c_str(), s.length());
 		file.close();
 		printf("SPIFFSVariableESP32 wrote file %s %s\n", filename.c_str(), s.c_str());
-	} else { 
+	} else if(initialized) { 
 		printf("SPIFFSVariableESP32 error writing file %s, formatting SPIFFS\n", filename.c_str());
 		SPIFFS.format();
+		file = SPIFFS.open(filename.c_str(), "w");
+		if (file) { 
+			file.write((const uint8_t *)s.c_str(), s.length());
+			file.close();	
+		}
 	}
 }
 
 string SPIFFSVariableESP32Base::readAsString() { 
 	string rval;
-	if (initialized == false) 
-		return rval;
 	fs::File file = SPIFFS.open(filename.c_str(), "r");
 	size_t bytes_read = 0;
 	if (file) { 

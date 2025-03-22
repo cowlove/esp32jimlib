@@ -19,9 +19,12 @@ void printMac(const uint8_t *x) {
 
 void ESPNowMuxOnRecv(const uint8_t *mac, const uint8_t *in, int len);
 void ESPNowMuxOnSend(const uint8_t *mac_addr, esp_now_send_status_t s);
+#ifndef ESP32CORE_V2
 void ESPNowMuxOnRecv_v3(const esp_now_recv_info *info, const uint8_t *in, int len) { 
     ESPNowMuxOnRecv(info->src_addr, in, len);
 }
+#endif
+
 class ESPNowMux { 
   uint32_t lastSend = 0;
 public:
@@ -59,7 +62,7 @@ public:
       esp_now_deinit();
       esp_now_init();
 #ifdef ESP32CORE_V2
-      esp_now_register_recv_cb(ESPNowMuxOnRecv_v3);
+      esp_now_register_recv_cb(ESPNowMuxOnRecv);
 #else
       esp_now_register_recv_cb(ESPNowMuxOnRecv_v3);
 #endif

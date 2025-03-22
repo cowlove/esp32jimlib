@@ -576,9 +576,10 @@ template<class T> string toString(const T&v);
 template<> inline string toString(const int &v) { return sfmt("%d", v); }
 template<> inline string toString(const string &s) { return s; }
 
-extern int SpiffsInit;
+//extern int SpiffsInit;
 class SPIFFSVariableESP32Base { 
 protected:
+	SPIFFSVariableESP32Base();
 	string filename, defaultStringValue;
 	void writeAsString(const string &s);
 	string readAsString();	
@@ -983,7 +984,7 @@ public:
 	PwmChannel(int p, int hz = 50, int c = 0, int g = 0) : pin(p), channel(c), gradual(g) {
 		//ledcSetup(channel, hz, 16);
 		//ledcAttachPin(pin, channel);
-		ledcAttachChannel(pin, hz, 16, channel);
+		ledcInit(pin, hz, 16, channel);
 	}
 	void setMs(int p) { set(p * 4715 / 1500); };
 	void setPercent(int p) { set(p * 65535 / 100); } 

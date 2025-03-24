@@ -19,7 +19,7 @@ void printMac(const uint8_t *x) {
 
 void ESPNowMuxOnRecv(const uint8_t *mac, const uint8_t *in, int len);
 void ESPNowMuxOnSend(const uint8_t *mac_addr, esp_now_send_status_t s);
-#ifndef ESP32CORE_V2
+#if ESP_ARDUINO_VERSION_MAJOR == 3 
 void ESPNowMuxOnRecv_v3(const esp_now_recv_info *info, const uint8_t *in, int len) { 
     ESPNowMuxOnRecv(info->src_addr, in, len);
 }
@@ -61,10 +61,10 @@ public:
       esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
       esp_now_deinit();
       esp_now_init();
-#ifdef ESP32CORE_V2
-      esp_now_register_recv_cb(ESPNowMuxOnRecv);
-#else
+#if ESP_ARDUINO_VERSION_MAJOR == 3 
       esp_now_register_recv_cb(ESPNowMuxOnRecv_v3);
+#else
+      esp_now_register_recv_cb(ESPNowMuxOnRecv);
 #endif
       esp_now_register_send_cb(ESPNowMuxOnSend);
       memcpy(broadcastPeerInfo.peer_addr, broadcastAddress, sizeof(broadcastAddress));

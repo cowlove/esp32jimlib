@@ -155,7 +155,7 @@ struct FakeSPIFFS {
 	void begin() {}
 	void format() {}
 	File open(const char *, const char *) { return File(); } 
-} SPIFFS;
+} SPIFFS, LittleFS;
 
 struct FakeArduinoOTA {
 	void begin() {}

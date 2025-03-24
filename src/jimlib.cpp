@@ -5,7 +5,7 @@
 #include <esp_mac.h>
 #include <HTTPClient.h>
 #include <PubSubClient.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 #include "Wire.h"
 #include <OneWireNg.h>
 #include <OneWireNg_CurrentPlatform.h>
@@ -16,7 +16,7 @@
 
 
 void ledcInit(int pin, int freq, int res, int channel) {
-#ifndef ESP32CORE_V2 
+#if ESP_ARDUINO_VERSION_MAJOR == 3 
 	ledcAttachChannel(pin, freq, res, channel);
 #else
 	ledcSetup(channel, freq, res);
@@ -25,7 +25,7 @@ void ledcInit(int pin, int freq, int res, int channel) {
 }
 
 void wdtInit(int sec) {
-#ifndef ESP32CORE_V2
+#if ESP_ARDUINO_VERSION_MAJOR == 3
 	esp_task_wdt_config_t c; 
 	c.timeout_ms = (sec)*1000; 
 	c.idle_core_mask = 0x1; 
@@ -34,7 +34,7 @@ void wdtInit(int sec) {
 	esp_task_wdt_init(&c);  // include jimlib.h last or this will cause compile errors in other headers
 	esp_task_wdt_add(NULL);
 #else	
-	esp_task_wdt_init(sec, false);
+	esp_task_wdt_init(sec, true);
 	esp_task_wdt_add(NULL);
 #endif
 }
@@ -203,7 +203,7 @@ void webUpgrade(const char *u) {
 }
 #endif
 
-int SpiffsInit = 0;
+//int SpiffsInit = 0;
 
 #ifdef GIT_VERSION
 char _GIT_VERSION[] = GIT_VERSION;
@@ -283,47 +283,55 @@ const String &getMacAddress() {
 }
 
 SPIFFSVariableESP32Base::SPIFFSVariableESP32Base() { 
-	SPIFFS.begin();
+	LittleFS.begin();
 }
 
 void SPIFFSVariableESP32Base::begin() { 
+	LittleFS.begin();
 	initialized = true;
 }
 bool SPIFFSVariableESP32Base::initialized = false;
 
 void SPIFFSVariableESP32Base::writeAsString(const string &s) { 
-	fs::File file = SPIFFS.open(filename.c_str(), "w");
+	fs::File file = LittleFS.open(filename.c_str(), "w");
 	if (file) { 
-		file.write((const uint8_t *)s.c_str(), s.length());
+		int r = file.write((const uint8_t *)s.c_str(), s.length());
+		file.flush();
 		file.close();
-		printf("SPIFFSVariableESP32 wrote file %s %s\n", filename.c_str(), s.c_str());
+		//printf("SPIFFSVariableESP32 write returned %d file %s %s\n", r, filename.c_str(), s.c_str());
 	} else if(initialized) { 
 		printf("SPIFFSVariableESP32 error writing file %s, formatting SPIFFS\n", filename.c_str());
-		SPIFFS.format();
-		file = SPIFFS.open(filename.c_str(), "w");
+		LittleFS.format();
+		LittleFS.begin();
+		file = LittleFS.open(filename.c_str(), "w");
 		if (file) { 
 			file.write((const uint8_t *)s.c_str(), s.length());
+			file.flush();
 			file.close();	
 		}
 	}
 }
 
 string SPIFFSVariableESP32Base::readAsString() { 
+	//printf("reading file %s\n", filename.c_str());
 	string rval;
-	fs::File file = SPIFFS.open(filename.c_str(), "r");
+	fs::File file = LittleFS.open(filename.c_str(), "r");
 	size_t bytes_read = 0;
 	if (file) { 
-		uint8_t buf[1024]; // TODO: read the whole file 
-		bytes_read = file.read(buf, sizeof(buf) - 1);
-		//printf("read %d bytes from %s\n", bytes_read, filename.c_str());
-		file.close();
-		if (bytes_read > 0) {
-			buf[bytes_read] = 0;
-			rval = string((char *)buf); 
-			printf("SPIFFSVariableESP32 read file %s %s\n", filename.c_str(), rval.c_str());
+		while(true) { 
+			uint8_t buf[64];  
+			int r = file.read(buf, sizeof(buf) - 1);
+			//printf("read() returned %d from %s\n", r, filename.c_str());
+			if (r <= 0)
+				break;
+			buf[r] = 0;
+			rval += string((char *)buf); 
+			//printf("SPIFFSVariableESP32 read %d bytes from file %s %s\n", r, filename.c_str(), buf);
 		}
+	} else { 
+		printf("Error opening file %s\n", filename.c_str());
 	}
-	if (bytes_read <= 0) {
+	if (rval.length() == 0) {
 		writeAsString(defaultStringValue);
 		rval = defaultStringValue;
 	}

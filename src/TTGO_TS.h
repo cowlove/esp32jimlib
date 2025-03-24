@@ -273,7 +273,7 @@ class ChangeTimer {
 // f2 = 0;
 // f1 = 1.1;
 
-#ifndef UBUNTU
+#ifndef CSIM
 #include <Adafruit_GFX.h>               // Core graphics library
 #include <Adafruit_ST7735.h>            // Hardware-specific library
 
@@ -334,19 +334,30 @@ public:
 		}
 		return rval;
 	}
-#ifndef UBUNTU 
+#ifndef CSIM
 	Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
-	void begin() { 
+	void begin() {
+		Serial.printf("%d\n", __LINE__); 
 		{
-			ScopedMutex lock(mutexSPI);
+			Serial.printf("%d\n", __LINE__); 
+			//ScopedMutex lock(mutexSPI);
+			Serial.printf("%d\n", __LINE__); 
 			pinMode(27,OUTPUT); 		//Backlight:27  TODO:JIM 27 appears to be an external pin 
+			Serial.printf("%d\n", __LINE__); 
 			digitalWrite(27,HIGH);		//New version added to backlight control
+			Serial.printf("%d\n", __LINE__); 
 			tft.initR(INITR_18GREENTAB);                             // 1.44 v2.1
+			Serial.printf("%d\n", __LINE__); 
 			tft.fillScreen(ST7735_BLACK);                            // CLEAR
+			Serial.printf("%d\n", __LINE__); 
 			tft.setTextColor(ST7735_YELLOW, ST7735_BLACK);           // GREEN
+			Serial.printf("%d\n", __LINE__); 
 			tft.setRotation(1);
+			Serial.printf("%d\n", __LINE__); 
 			tft.setTextSize(textSize); 
+			Serial.printf("%d\n", __LINE__); 
 		}
+		Serial.printf("%d\n", __LINE__); 
 		initTextBuffer();
 		forceUpdate();
 		xTaskCreate(JDisplayUpdateThread, "JDisplayUpdateThread", 8192, this, tskIDLE_PRIORITY, NULL);
@@ -435,7 +446,7 @@ public:
 			changed = false; 
 		}
 		first = false;
-#ifdef UBUNTU
+#ifdef CSIM
 		labelFontSize = d->textSize = 1;
 #endif
 		if (force)
@@ -498,7 +509,7 @@ public:
 };
 
 
-#ifndef UBUNTU
+#ifndef CSIM
 const JDisplay::Colors JDisplay::defaultColors = { ST7735_GREEN, ST7735_BLACK, ST7735_WHITE, ST7735_BLACK };
 #else // UBUNTU
 const JDisplay::Colors JDisplay::defaultColors = { 1, 2, 3, 4 };
@@ -515,7 +526,7 @@ class ESP32sim_jdisplay : public ESP32sim_Module {
 	}
 	void done() override {}
 } esp32sim_jdisplay;
-#endif // else UBUNTU
+#endif // else CSIM
 
 class JDisplayEditableItem;
 

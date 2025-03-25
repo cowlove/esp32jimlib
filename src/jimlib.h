@@ -597,12 +597,13 @@ public:
 		filename = f;
 		defaultStringValue = toString(def);
 	}
-	operator const T() {
+	const T get() {
 		val = def;
 		string s = readAsString();
 		fromString(s, val);
 		return val;
-	} 
+	}
+	operator const T() { return get(); } 
 	SPIFFSVariableESP32 & operator=(const T&v) { 
 		if (val != v) {
 			val = v;
@@ -635,6 +636,7 @@ class JimWiFi {
 	std::function<void(void)> otaFunc = NULL;
 	// TODO: move this into JimWifi
 	SPIFFSVariable<int> lastAP = SPIFFSVariable<int>("/lastap", -1);
+public:
 	void autoConnect() {
 		if (!enabled) 
 			return;
@@ -666,6 +668,7 @@ class JimWiFi {
 			for(int d = 0; d < 80; d++) { 
 				if (WiFi.status() == WL_CONNECTED) {
 					Serial.printf("Connected\n");
+					firstRun = false;
 					return;
 				}
 				wdtReset();
@@ -720,6 +723,7 @@ class JimWiFi {
 			delay(100);
 			wdtReset();
 		}
+		firstRun = false;
 	}
 public:
     bool updateInProgress = false;

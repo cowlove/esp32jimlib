@@ -30,6 +30,7 @@ class ESPNowMux {
 public:
   int defaultChannel = 1;
   bool pending = false;
+  uint32_t lastReceiveUs = 0;
   bool alwaysBroadcast = false;
   ESPNowMux() { Instance = this; }
   void stop() { 
@@ -75,7 +76,8 @@ public:
       pending = false;
     }
   }
-  void onRecv(const uint8_t *mac, const uint8_t *data, int len) { 
+  void onRecv(const uint8_t *mac, const uint8_t *data, int len) {
+    lastReceiveUs = micros(); 
     for(auto i = callbacks.begin(); i != callbacks.end(); i++) { 
       int prefixLen = i->prefix.length();
       if (len > prefixLen && memcmp(data, i->prefix.c_str(), i->prefix.length()) == 0) {

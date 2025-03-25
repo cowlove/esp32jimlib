@@ -1,5 +1,9 @@
 #ifndef RELIABLESTREAM_H
 #define RELIABLESTREAM_H
+#include <string>;
+#include "Arduino_CRC32.h" 
+using std::string;
+
 class ReliableStreamInterface {
 public:
   virtual int read(string &) = 0;
@@ -10,10 +14,21 @@ protected:
   uint16_t port; 
 };
 
+
+// reads potentially unaligned and packetized data from client interface, 
+// prepends a CRC prefix and a separator suffix string, and provides a more reliable
+// packet interface.  also sends periodic ACK packets (that are deliberately 
+// dropped due to bad CRC), and handles reinitalizing the client layer on error
+// or timeout 
+// serious TODO deficiencies, see notes below 
+
 template<class T>
 class ReliableStream : public ReliableStreamInterface { 
   uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
+  const string ACK_pkt = "-1 ACK\n";
+  string readBuffer;
 public:
+  string separator = string("\nXOXEND\n");
   ReliableStream() {}
   ReliableStream(const char *s, uint16_t p) { begin(s, p); }
   void write(const string &s) { return write(s.c_str(), s.length()); }
@@ -22,7 +37,12 @@ public:
     if (len > 0) { 
       check();
       if (client.connected()) { 
-        int n = client.write(buf, len); 
+        string s;
+        s.assign((char *)buf, len);
+        Arduino_CRC32 crc32;
+        uint32_t cksum = crc32.calc((uint8_t const *)s.c_str(), s.length());
+        s = sfmt("%x ", cksum) + s + separator;
+        int n = client.write((uint8_t *)s.c_str(), s.length()); 
         client.flush();
         if (n <= 0) {
           //Serial.printf("ReliableStream: write error, closing\n");
@@ -30,35 +50,65 @@ public:
         }
         if (n > 0) 
           lastSend = millis();
-        //Serial.printf("SEND >>>> %s\n", buf);
+        //Serial.printf("SEND >>>> %s\n", s.c_str());
       } 
     }             
   }
-  int available() { return client.available(); }
+  int available() { return client.available() || readBuffer.length() > 0; }
   string read() { 
     string s;
     read(s);
     return s;
   }
   int read(uint8_t *buf, int len) { 
+    // TODO!!! this should not be the main read function, switch over to 
+    // the one that returns a string.  This will discard the rest of a packet
+    // if it's larger than len 
     check();
-    if (!client.connected() || !client.available()) 
+    if (readBuffer.length() == 0 && (!client.connected() || !client.available())) 
       return 0;
 
-    int n = client.read(buf, len);
-    if (n > 0) {
+    while(client.available()) { 
+      int n = client.read(buf, len); 
+      if (n <= 0) {
+        Serial.printf("ReliableStream: read error, closing\n");
+        client.stop();
+        break; 
+      }
+      string s;
+      s.assign((char *)buf, n);
       lastRecv = millis();
-      //Serial.printf("RECV <<<< %s\n", s.c_str()); 
+      //printf("RECV <<<< %s\n", s.c_str()); 
+      readBuffer += s;
+    } 
+  
+    auto endp = readBuffer.find(separator); 
+    if (endp != string::npos) { 
+      string s = readBuffer.substr(0, endp);
+      //printf("RECV got a packet of length %d, readBuf len %d\n", endp, readBuffer.length());
+      uint32_t cksum = 0;
+      if (s.find(" ") != string::npos && sscanf(s.c_str(), "%x ", &cksum) == 1) {  
+        s = s.substr(s.find(" ") + 1, s.find(separator));
+        memcpy(buf, s.c_str(), min((int)len, (int)s.length()));
+        //printf("RECV     returning: '%s'\n", s.c_str());
+        readBuffer.erase(0, endp + separator.length());
+        Arduino_CRC32 crc32;
+        uint32_t cksum2 = crc32.calc((uint8_t const *)s.c_str(), s.length());
+        if (cksum != cksum2) { 
+          if (s.find(ACK_pkt) != string::npos)
+            printf("RECV bad cksum, discarding packet\n");
+          s = "";
+        }
+        return s.length(); 
+      }
+      readBuffer.erase(0, endp);
     }
-    if (n <= 0) {
-      //Serial.printf("ReliableStream: read error, closing\n");
-      client.stop();
-    }
-    return n;
+    return 0;
   }
   int read(char *buf, int len) { return read((uint8_t *)buf, len); }
   int read(string &s) {
-    char buf[1024];
+    // UGH see note in read() above.  
+    char buf[4096];
     s = "";
     int n = read(buf, sizeof(buf)); 
     if (n > 0) 
@@ -74,7 +124,8 @@ protected:
     client.setTimeout(6000);
     if (millis() - lastSend > 3000) { 
       lastSend = millis();
-      write("ACK\n");    
+      string s = ACK_pkt + separator;
+      client.write((uint8_t *)s.c_str(), s.length());    
     }
     if (millis() - lastRecv > 9000) {
       lastRecv = millis();

@@ -1,6 +1,6 @@
 #ifndef RELIABLESTREAM_H
 #define RELIABLESTREAM_H
-#include <string>;
+#include <string>
 #include "Arduino_CRC32.h" 
 using std::string;
 

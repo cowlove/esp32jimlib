@@ -469,12 +469,22 @@ typedef FakeSerial Stream;
 #define DEC 0
 #define HEX 0 
 
+#include <arpa/inet.h>
 
+#if __BIG_ENDIAN__
+# define htonll(x) (x)
+# define ntohll(x) (x)
+#else
+# define htonll(x) (((uint64_t)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
+# define ntohll(x) (((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
+#endif
 	
-void esp_read_mac(uint8_t *, int) {}
-
-
-
+uint64_t csim_mac = 0xffeeddaabbcc;
+void esp_read_mac(uint8_t *out, int) {
+	uint64_t nmac = htonll(csim_mac);
+	uint8_t *p = (uint8_t *)&nmac;
+	memcpy(out, p + 2, 6);
+}
 
 typedef int gpio_num_t;
 
@@ -750,9 +760,15 @@ typedef void (*esp_now_recv_cb_t)(const uint8_t *mac_addr, const uint8_t *data, 
 typedef void (*esp_now_recv_cb_t_v3)(const esp_now_recv_info *info, const uint8_t *data, int data_len);
 typedef void (*esp_now_send_cb_t)(const uint8_t *mac_addr, esp_now_send_status_t status);
 esp_now_send_cb_t ESP32_esp_now_send_cb = NULL;
-esp_now_recv_cb_t ESP32_esp_now_recv_cb = NULL, ESP32_esp_now_csim_send_handler = 0;
+esp_now_recv_cb_t ESP32_esp_now_recv_cb = NULL;
 
-class ESPNOW_csim : public ESP32sim_Module {
+class ESPNOW_csimInterface {
+public:
+	virtual void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) = 0;
+};
+vector<ESPNOW_csimInterface *> ESPNOW_sendHandlers;
+
+class ESPNOW_csim : public ESP32sim_Module, public ESPNOW_csimInterface {
 	struct SimPacket {
 		uint8_t mac[6];
 		string data;
@@ -760,8 +776,8 @@ class ESPNOW_csim : public ESP32sim_Module {
 	vector<SimPacket> pktQueue;
 public:
 	static ESPNOW_csim *Instance;
-	ESPNOW_csim() { Instance = this; }
-	void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
+	ESPNOW_csim() { ESPNOW_sendHandlers.push_back(this); }
+	void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) override {
 		SimPacket p; 
 		memcpy(p.mac, mac_addr, sizeof(p.mac));
 		const char *cp = (const char *)data;
@@ -776,8 +792,45 @@ public:
 		}
 		pktQueue.clear();
 	} 
-} espnow;
-ESPNOW_csim *ESPNOW_csim::Instance = NULL;
+};
+
+// ESPNOW simulation between two processes using named pipes
+//   example:
+//   ./csim --espnowPipe /tmp/fifo2 /tmp/fifo1 --mac fff1
+//   ./csim --espnowPipe /tmp/fifo1 /tmp/fifo2 --mac fff2
+
+
+class ESPNOW_csimPipe : public ESP32sim_Module, public ESPNOW_csimInterface {
+	int fdIn;
+	const char *outFilename;
+public:
+	static ESPNOW_csimPipe *Instance;
+	ESPNOW_csimPipe(const char *inFile, const char *outF) : outFilename(outF) { 
+		ESPNOW_sendHandlers.push_back(this);
+		fdIn = open(inFile, O_RDONLY | O_NONBLOCK); 
+	}
+	void send(const uint8_t *mac_addr, const uint8_t *data, int len) override {
+		int fdOut = open(outFilename, O_WRONLY | O_NONBLOCK); 
+		if(fdOut > 0) {
+			int n = ::write(fdOut, data, len);
+			if (n <= 0) { 
+				printf("write returned %d", n);
+	
+			}
+		}
+		close(fdOut);
+	}
+	virtual void loop() override {
+		static uint8_t mac[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+		char buf[512];
+		int n;
+		while(fdIn > 0 && (n = ::read(fdIn, buf, sizeof(buf))) > 0) { 
+			if (ESP32_esp_now_recv_cb != NULL) {
+				ESP32_esp_now_recv_cb(mac, (uint8_t *)buf, n);
+			}	
+		}
+	} 
+};
 
 int esp_wifi_internal_set_fix_rate(int, int, int) { return ESP_OK; } 
 int esp_now_register_recv_cb(void *) { return ESP_OK; }	
@@ -796,8 +849,8 @@ int esp_now_register_recv_cb(esp_now_recv_cb_t_v3 cb) { return ESP_OK; }
 int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
 	if (ESP32_esp_now_send_cb != NULL)
 		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 
-	if (ESPNOW_csim::Instance != NULL)
-		ESPNOW_csim::Instance->send(mac, data, len); 
+	for(auto p : ESPNOW_sendHandlers) 
+		p->send(mac, data, len); 
 	return ESP_OK; 
 }
 int esp_wifi_config_espnow_rate(int, int) { return ESP_OK; }
@@ -1006,7 +1059,6 @@ public:
 	void main(int argc, char **argv) {
 		float seconds = 0;
 		Serial.toConsole = true;
-		ESPNOW_csim espnow;
 		for(char **a = argv + 1; a < argv+argc; a++) {
 			if (strcmp(*a, "--serial") == 0) {
 				printf("--serial is depricated, use --serialConsole\n");
@@ -1014,7 +1066,11 @@ public:
 			}
 			else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
 			else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%f", &seconds); 
-			else if (strcmp(*a, "--interruptFile") == 0) { 
+			else if (strcmp(*a, "--mac") == 0) { 
+				sscanf(*(++a), "%lx", &csim_mac);
+			} else if (strcmp(*a, "--espnowPipe") == 0) { 
+				new ESPNOW_csimPipe(*(++a), *(++a));
+			} else if (strcmp(*a, "--interruptFile") == 0) { 
 				intMan.setInterruptFile(*(++a));
 			} else if (strcmp(*a, "--button") == 0) {
                         int pin, clicks = 1, longclick = 0;

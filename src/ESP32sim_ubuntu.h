@@ -113,9 +113,41 @@ void esp_task_wdt_reset() {}
 esp_err_t esp_task_wdt_add(void *) { return 0; }
 esp_err_t esp_task_wdt_delete(const void *) { return 0; }
 int rtc_get_reset_reason(int) { return 0; } 
-//static inline void ledcSetup(int, int, int) {}
-//static inline void ledcAttachPin(int, int) {}
-//static inline void ledcWrite(int, int) {}
+
+struct ledc_channel_config_t {
+	int gpio_num, speed_mode, channel, timer_sel, duty, hpoint;
+};
+struct ledc_timer_config_t  {
+	int speed_mode,          // timer mode
+	duty_resolution, // resolution of PWM duty
+	timer_num,          // timer index
+	freq_hz, 
+	clk_cfg;
+};
+
+typedef int ledc_timer_t;
+typedef int ledc_mode_t;
+typedef int ledc_channel_t;
+
+#define LEDC_CHANNEL_2 2
+#define LEDC_TIMER_0 0 
+#define LEDC_LOW_SPEED_MODE 0
+#define LEDC_TIMER_6_BIT 0 
+#define LEDC_USE_RTC8M_CLK 0 
+
+
+
+static const int CONFIG_CONSOLE_UART_NUM = 0;
+static inline void esp_light_sleep_start() {}
+static inline void uart_tx_wait_idle(int) {}
+static inline void esp_sleep_pd_config(int, int) {}
+#define ESP_PD_DOMAIN_RTC_PERIPH 0
+#define ESP_PD_OPTION_AUTO 0 
+static inline void ledc_update_duty(int, int) {}
+//#define LEDC_LS_MODE 0
+static inline void ledc_set_duty(int, int, int) {}
+static inline void ledc_timer_config(void *) {}
+void ledc_channel_config(void *) {}
 
 #define ADC1_CHANNEL_1 0
 #define ADC1_CHANNEL_2 0
@@ -438,7 +470,9 @@ void gpio_deep_sleep_hold_en() {}
 void gpio_hold_dis(int)  {}
 void gpio_hold_en(int)  {}
 int esp_sleep_enable_timer_wakeup(uint64_t) { return 0; }
-void esp_deep_sleep_start() { ESP32sim_exit(); }
+void esp_deep_sleep_start() { 
+	//ESP32sim_exit(); 
+}
 
 struct JsonResult { 
 	operator int()  { return 0; }
@@ -449,8 +483,8 @@ struct StaticJsonDocument {
 	JsonResult operator[] (const char *) { return JsonResult(); }
 };
 
-typedef int DeserializationError;
-int deserializeJson(StaticJsonDocument<1024>, String) { return 0; }
+//typedef int DeserializationError;
+//int deserializeJson(StaticJsonDocument<1024>, String) { return 0; }
 
 struct FakeWiFi {
 	int curStatus = WL_DISCONNECTED;

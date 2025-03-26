@@ -5,10 +5,12 @@
 #include <esp_mac.h>
 #include <HTTPClient.h>
 #include <PubSubClient.h>
-#include <LittleFS.h>
+#include <SPIFFS.h>
 #include "Wire.h"
 #include <OneWireNg.h>
 #include <OneWireNg_CurrentPlatform.h>
+
+#define LittleFS SPIFFS
 
 #else
 #include "ESP32sim_ubuntu.h" // sigh remove all static defs here too

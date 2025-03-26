@@ -570,10 +570,12 @@ const String &getMacAddress();
 using std::string;
 template<class T> bool fromString(const string &s, T&v);
 template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d", &v) == 1; }
+template<> inline bool fromString(const string &s, float &v) { return sscanf(s.c_str(), "%f", &v) == 1; }
 template<> inline bool fromString(const string &s, string &v) { v = s; return true; }
 
 template<class T> string toString(const T&v);
 template<> inline string toString(const int &v) { return sfmt("%d", v); }
+template<> inline string toString(const float &v) { return sfmt("%f", v); }
 template<> inline string toString(const string &s) { return s; }
 
 //extern int SpiffsInit;
@@ -597,20 +599,20 @@ public:
 		filename = f;
 		defaultStringValue = toString(def);
 	}
-	const T get() {
+	T read() {
 		val = def;
 		string s = readAsString();
 		fromString(s, val);
 		return val;
 	}
-	operator const T() { return get(); } 
-	SPIFFSVariableESP32 & operator=(const T&v) { 
+	operator const T() { return read(); } 
+	SPIFFSVariableESP32 & operator=(const T&v) { write(v); return *this; } 
+	void write(const T &v) {
 		if (val != v) {
 			val = v;
 			string s = toString(val);
 			this->writeAsString(s);
 		}
-		return *this;
 	}
 };
 
@@ -1355,7 +1357,32 @@ public:
 	}
 };
 
+#define PRINTLINE() if(1) { printf("%9.3f %d\n", millis() / 1000.0, __LINE__); } 
 
+#include <rom/rtc.h>
+
+inline static void print_reset_reason() {
+  RESET_REASON reason = rtc_get_reset_reason(0);
+  switch ( reason)
+  {
+    case 1 : Serial.println ("POWERON_RESET");break;          /**<1, Vbat power on reset*/
+    case 3 : Serial.println ("SW_RESET");break;               /**<3, Software reset digital core*/
+    case 4 : Serial.println ("OWDT_RESET");break;             /**<4, Legacy watch dog reset digital core*/
+    case 5 : Serial.println ("DEEPSLEEP_RESET");break;        /**<5, Deep Sleep reset digital core*/
+    case 6 : Serial.println ("SDIO_RESET");break;             /**<6, Reset by SLC module, reset digital core*/
+    case 7 : Serial.println ("TG0WDT_SYS_RESET");break;       /**<7, Timer Group0 Watch dog reset digital core*/
+    case 8 : Serial.println ("TG1WDT_SYS_RESET");break;       /**<8, Timer Group1 Watch dog reset digital core*/
+    case 9 : Serial.println ("RTCWDT_SYS_RESET");break;       /**<9, RTC Watch dog Reset digital core*/
+    case 10 : Serial.println ("INTRUSION_RESET");break;       /**<10, Instrusion tested to reset CPU*/
+    case 11 : Serial.println ("TGWDT_CPU_RESET");break;       /**<11, Time Group reset CPU*/
+    case 12 : Serial.println ("SW_CPU_RESET");break;          /**<12, Software reset CPU*/
+    case 13 : Serial.println ("RTCWDT_CPU_RESET");break;      /**<13, RTC Watch dog Reset CPU*/
+    case 14 : Serial.println ("EXT_CPU_RESET");break;         /**<14, for APP CPU, reseted by PRO CPU*/
+    case 15 : Serial.println ("RTCWDT_BROWN_OUT_RESET");break;/**<15, Reset when the vdd voltage is not stable*/
+    case 16 : Serial.println ("RTCWDT_RTC_RESET");break;      /**<16, RTC Watch dog reset digital core and rtc module*/
+    default : Serial.println ("NO_MEAN");
+  }
+}
 
 //#endif
 #ifdef CSIM

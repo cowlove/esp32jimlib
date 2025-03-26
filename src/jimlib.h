@@ -578,12 +578,12 @@ template<> inline string toString(const int &v) { return sfmt("%d", v); }
 template<> inline string toString(const float &v) { return sfmt("%f", v); }
 template<> inline string toString(const string &s) { return s; }
 
-template<> bool fromString(const string &s, std::vector<string> &v) { 
+template<> inline bool fromString(const string &s, std::vector<string> &v) { 
 	v = split(s, '\n'); 
 	return true; 
 }
 
-template<> string toString(const std::vector<string> &v) { 
+template<> inline string toString(const std::vector<string> &v) { 
 	string rval;
     for(auto line : v) rval += line + "\n";
     return rval;
@@ -1370,7 +1370,7 @@ public:
 
 #define PRINTLINE() if(1) { printf("%9.3f %d\n", millis() / 1000.0, __LINE__); } 
 
-const char *reset_reason_string(RESET_REASON reason);
+const char *reset_reason_string(int reason);
 
 //#endif
 #ifdef CSIM

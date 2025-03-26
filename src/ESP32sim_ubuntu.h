@@ -545,17 +545,28 @@ struct WiFiServer {
 };
 
 class HTTPClient { 
+	string header1, header2, response, url;
 	public:
-    int begin(const char *) { return 0; }
+    int begin(const char *url) { this->url = url; return 0; }
 	int begin(WiFiClientSecure, const char *) { return 0; }
-	String getString() { return String(); }
+	String getString() { return String(response.c_str()); }
 	int GET() { return 0; }
 	int getSize() { return 0; }
 	WiFiClient *getStreamPtr() { return 0; } 
 	bool connected() { return 0; } 
 	void end() {}
-	void addHeader(const char *, const char *) {}
-	int POST(const char *) { return 200; }
+	void addHeader(const char *h1, const char *h2) { header1 = h1; header2 = h2; }
+	int POST(const char *postData) {
+		string cmd = "curl --silent -X POST -H '" + header1 + ": " + header2 + "' -d '" +
+			postData + "' " + url;
+			int numOfCPU;
+		FILE *fp = popen(cmd.c_str(), "r");
+		char buf[4096];
+		fgets(buf, sizeof(buf), fp);
+		response.assign(buf, sizeof(buf));
+		fclose(fp);
+		return 200;
+	}
 };
 
 #define PROGMEM 

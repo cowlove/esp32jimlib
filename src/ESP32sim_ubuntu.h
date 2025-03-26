@@ -105,6 +105,7 @@ void xTaskCreate(void (*)(void *), const char *, int, void *, int, void *) {}
 #define RTC_CNTL_BROWN_OUT_REG 0
 
 typedef int esp_err_t;
+typedef int RESET_REASON; 
 typedef struct { int timeout_ms, idle_core_mask, trigger_panic; } esp_task_wdt_config_t;  
 void esp_task_wdt_init(const esp_task_wdt_config_t *) {}
 void esp_task_wdt_init(int, int) {}
@@ -112,7 +113,7 @@ void esp_task_wdt_deinit() {}
 void esp_task_wdt_reset() {}
 esp_err_t esp_task_wdt_add(void *) { return 0; }
 esp_err_t esp_task_wdt_delete(const void *) { return 0; }
-int rtc_get_reset_reason(int) { return 0; } 
+int rtc_get_reset_reason(int) { return 1; } 
 
 struct ledc_channel_config_t {
 	int gpio_num, speed_mode, channel, timer_sel, duty, hpoint;
@@ -138,7 +139,6 @@ typedef int ledc_channel_t;
 
 
 static const int CONFIG_CONSOLE_UART_NUM = 0;
-static inline void esp_light_sleep_start() {}
 static inline void uart_tx_wait_idle(int) {}
 static inline void esp_sleep_pd_config(int, int) {}
 #define ESP_PD_DOMAIN_RTC_PERIPH 0
@@ -166,19 +166,33 @@ struct Adafruit_NeoPixel {
 };
 
 
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+
 namespace fs { 
 class File {
-	public: 
+	int fd = -1;
+public: 
+	File() {}
+	File(const char *fn, const char *m) {
+		mkdir("./spiff", 0755);
+		string filename = string("./spiff/") + fn;
+		int mode = O_RDONLY;
+		if (strcmp(m, "w") == 0) mode = O_CREAT | O_TRUNC | O_WRONLY;
+		fd = open(filename.c_str(), mode, 0644);
+	}
 	bool operator!() { return false; } 
-	operator bool() { return false; } 
+	operator bool() { return true; } 
 	File openNextFile(void) { return *this; }
-	void close() {}
-        int print(const char *) { return 0; }
+	void close() { if (fd != -1) ::close(fd); }
+    int print(const char *s) { return ::write(fd, s, strlen(s)); }
 	int printf(const char *, ...) { return 0; } 
-	int write(const char *, int) { return 0; } 
-	int write(const uint8_t *, int) { return 0; } 
+	int write(const char *d, int l) { return ::write(fd, d, l); } 
+	int write(const uint8_t *d, int l) { return ::write(fd, d, l); } 
 	int flush() { return 0; }	
-	int read(uint8_t *, int) { return 0; } 
+	int read(uint8_t *buf, int len) { return ::read(fd, buf, len); }
+	~File() { close(); } 
 };
 };
 using fs::File;
@@ -186,7 +200,7 @@ using fs::File;
 struct FakeSPIFFS {
 	void begin() {}
 	void format() {}
-	File open(const char *, const char *) { return File(); } 
+	File open(const char *f, const char *m) { return File(f, m); } 
 } SPIFFS, LittleFS;
 
 struct FakeArduinoOTA {
@@ -469,10 +483,11 @@ void gpio_deep_sleep_hold_dis(int) {}
 void gpio_deep_sleep_hold_en() {}
 void gpio_hold_dis(int)  {}
 void gpio_hold_en(int)  {}
-int esp_sleep_enable_timer_wakeup(uint64_t) { return 0; }
-void esp_deep_sleep_start() { 
-	//ESP32sim_exit(); 
-}
+uint64_t sleep_timer = 0;
+int esp_sleep_enable_timer_wakeup(uint64_t t) { sleep_timer = t; return 0; }
+void esp_deep_sleep_start() { ESP32sim_exit(); }
+void esp_light_sleep_start() { delayMicroseconds(sleep_timer); } 
+
 
 struct JsonResult { 
 	operator int()  { return 0; }
@@ -531,7 +546,7 @@ struct WiFiServer {
 
 class HTTPClient { 
 	public:
-        int begin(const char *) { return 0; }
+    int begin(const char *) { return 0; }
 	int begin(WiFiClientSecure, const char *) { return 0; }
 	String getString() { return String(); }
 	int GET() { return 0; }
@@ -540,7 +555,7 @@ class HTTPClient {
 	bool connected() { return 0; } 
 	void end() {}
 	void addHeader(const char *, const char *) {}
-	int POST(const char *) { return -1; }
+	int POST(const char *) { return 200; }
 };
 
 #define PROGMEM 

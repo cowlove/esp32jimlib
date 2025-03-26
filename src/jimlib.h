@@ -1182,6 +1182,24 @@ class CliVariable {
 	T& operator =(T v) { val = v; return val; } 
 };
 
+
+class QuickRebootCounter {
+	SPIFFSVariable<int> count = SPIFFSVariable<int>("/quickRebootCount", 0); 
+	SPIFFSVariable<int> pending = SPIFFSVariable<int>("/quickRebootPending", 0); 
+public:
+	QuickRebootCounter() { 
+		if (pending == 1) count = count + 1;
+		pending = 1;
+	}
+	void run() { 
+		if (millis() > 1000) {
+			count = 0; pending = 0; 
+		}
+	}
+	int reboots() { return count; }
+};
+
+
 #define CLI_VARIABLE_INT(name,val) CliVariable<int> name = CliVariable<int>(j.cli, #name, val)
 #define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name = CliVariable<float>(j.cli, #name, val)
 #define CLI_VARIABLE_STRING(name,val) CliVariable<String> name = CliVariable<String>(j.cli, #name, val)
@@ -1196,6 +1214,7 @@ public:
 	bool debug = false;
 	CommandLineInterface cli;
 	CliVariable<int> logLevel;
+	QuickRebootCounter quickRebootCounter;
 public:
 	//PwmChannel led = PwmChannel(getLedPin(), 1024, 10, 2);
 	struct {
@@ -1233,6 +1252,7 @@ public:
 	void run() { 
 		if (beginRan == false)
 			begin();
+		quickRebootCounter.run();
 		lastRun = thisRun;
 		thisRun = micros();
 		forceTicksNow = false;

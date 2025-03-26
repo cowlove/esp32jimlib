@@ -68,6 +68,17 @@ public:
 	virtual void done() {};
 };
 
+class ESP32sim_flags : public ESP32sim_Module { 
+	void addflag(const char *f) {
+		if (strcmp(f, "OneProg") == 0) OneProg = true;
+	}
+public:
+	bool OneProg = false;
+	virtual void parseArg(char **&a, char **) override {
+		if (strcmp(*a, "--csimFlag") == 0) addflag(*(++a));
+	}
+} csim_flags;
+
 #define byte char
 static uint64_t _micros = 0;
 static uint64_t _microsMax = 0xffffffff;
@@ -766,17 +777,29 @@ class ESPNOW_csimInterface {
 public:
 	virtual void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) = 0;
 };
-vector<ESPNOW_csimInterface *> ESPNOW_sendHandlers;
+ESPNOW_csimInterface *ESPNOW_sendHandler = NULL;
 
-class ESPNOW_csim : public ESP32sim_Module, public ESPNOW_csimInterface {
+// ESPNOW_csimOneProg: lightweight ESPNOW simluation framework where 
+// one sketch creates both a client and server object and calls them 
+// both interleaved from the same loop() code.  Depends on typical client/server
+// code reading before writing, otherwise the module will consume its own output
+// 
+// #ifdef CSIM
+// if (csim_flags.OneProg) { 
+//	client1.run();
+//	client2.run();
+//	server.run();
+//}
+//#endif
+
+class ESPNOW_csimOneProg : public ESP32sim_Module, public ESPNOW_csimInterface {
 	struct SimPacket {
 		uint8_t mac[6];
 		string data;
 	 };
 	vector<SimPacket> pktQueue;
 public:
-	static ESPNOW_csim *Instance;
-	ESPNOW_csim() { ESPNOW_sendHandlers.push_back(this); }
+	ESPNOW_csimOneProg() {}
 	void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) override {
 		SimPacket p; 
 		memcpy(p.mac, mac_addr, sizeof(p.mac));
@@ -794,19 +817,16 @@ public:
 	} 
 };
 
-// ESPNOW simulation between two processes using named pipes
+// Higher fidelity ESPNOW simulation between two processes using named pipes
 //   example:
 //   ./csim --espnowPipe /tmp/fifo2 /tmp/fifo1 --mac fff1
 //   ./csim --espnowPipe /tmp/fifo1 /tmp/fifo2 --mac fff2
-
 
 class ESPNOW_csimPipe : public ESP32sim_Module, public ESPNOW_csimInterface {
 	int fdIn;
 	const char *outFilename;
 public:
-	static ESPNOW_csimPipe *Instance;
 	ESPNOW_csimPipe(const char *inFile, const char *outF) : outFilename(outF) { 
-		ESPNOW_sendHandlers.push_back(this);
 		fdIn = open(inFile, O_RDONLY | O_NONBLOCK); 
 	}
 	void send(const uint8_t *mac_addr, const uint8_t *data, int len) override {
@@ -849,8 +869,8 @@ int esp_now_register_recv_cb(esp_now_recv_cb_t_v3 cb) { return ESP_OK; }
 int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
 	if (ESP32_esp_now_send_cb != NULL)
 		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 
-	for(auto p : ESPNOW_sendHandlers) 
-		p->send(mac, data, len); 
+	if (ESPNOW_sendHandler != NULL) 
+		ESPNOW_sendHandler->send(mac, data, len); 
 	return ESP_OK; 
 }
 int esp_wifi_config_espnow_rate(int, int) { return ESP_OK; }
@@ -1069,7 +1089,10 @@ public:
 			else if (strcmp(*a, "--mac") == 0) { 
 				sscanf(*(++a), "%lx", &csim_mac);
 			} else if (strcmp(*a, "--espnowPipe") == 0) { 
-				new ESPNOW_csimPipe(*(++a), *(++a));
+				ESPNOW_sendHandler= new ESPNOW_csimPipe(*(++a), *(++a));
+			} else if (strcmp(*a, "--espnowOneProg") == 0) { 
+				ESPNOW_sendHandler= new ESPNOW_csimOneProg();
+				csim_flags.OneProg = true;
 			} else if (strcmp(*a, "--interruptFile") == 0) { 
 				intMan.setInterruptFile(*(++a));
 			} else if (strcmp(*a, "--button") == 0) {

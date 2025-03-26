@@ -615,7 +615,7 @@ class PubSubClient : public ESP32sim_Module {
 	int isConnected = 0;
 	PubSubClient(WiFiClient &) {}
 	void publish(const char *t, const char *p, int l = 0)  {
-		printf("MQTT: %s: %s\n", t, p);
+		//printf("MQTT: %s: %s\n", t, p);
 	}
 	int connected() { return isConnected; }
 	int connect(const char *) { return isConnected = 1; }

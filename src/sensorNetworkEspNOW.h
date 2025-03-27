@@ -61,6 +61,7 @@ friend RemoteSensorModule;
 protected:
     bool isOutput = false;
 public:    
+    uint32_t updateTimeMs = 0xf000000;
     Sensor(RemoteSensorModule *p = NULL, std::string n = "");
     virtual void begin() {}
     virtual string makeSchema() = 0;
@@ -70,6 +71,7 @@ public:
     string result = "";
     float asFloat() { return strtof(result.c_str(), NULL); }
     string asString() { return result; }
+    uint32_t getAgeMs() { return millis() - updateTimeMs; }
 };
 
 class SchemaParser : protected RemoteSensorProtocol { 
@@ -184,6 +186,7 @@ public:
             for(auto s : sensors) { 
                 if (s->name == t.first && s->isOutput == false) { 
                     s->result = t.second;
+                    s->updateTimeMs = millis();
                     updateReady = true;
                     break;
                 }
@@ -303,25 +306,40 @@ SchemaParser::RegisterClass SensorADC::reg([](const string &s)->Sensor * {
 class SensorDHT : public Sensor { 
     DHT dht;
     int pin;
+    int retries = 0;
 public:
     SensorDHT(RemoteSensorModule *p, const char *n, int _pin) : Sensor(p, n), pin(_pin), dht(_pin, DHT22) {}    
     void begin() override { 
-        OUT("DHT.begin()"); 
+        OUT("%09.3f DHT begin()", millis()/1000.0);
         pinMode(pin, INPUT_PULLUP); 
         dht.begin(); 
     }
     string makeSchema() override { return sfmt("DHT%d", pin); }
     string makeReport() override {
-        float t, h;
-        for(int retries = 0; retries < 5; retries++) { 
+        float t = NAN, h = NAN;
+        for(int r = 0; r < 15; r++) { 
+            delay(350); // no idea why, seems to persist even after microcontroller has booted and stabilized
+            h = dht.readHumidity(true);
             t = dht.readTemperature();
-            h = dht.readHumidity();
-            if (!isnan(t) && !isnan(h))
+            if (!isnan(t) && !isnan(h)) {
                 break;
+            } 
+            retries++;
+            OUT("%09.3f DHT read failure t:%.2f h:%.2f, retry #%d, total retries %d...", millis()/1000.0, t, h, r, retries);
             wdtReset();
-            delay(1000);
+            //delay(300);
         } 
-        return sfmt("%.2f,%.2f", t, h);
+        return sfmt("%.2f,%.2f,%d", t, h, retries);
+    }
+    float getTemperature() { 
+        float t = NAN, h = NAN;
+        sscanf(result.c_str(), "%f,%f", &t, &h);
+        return t;
+    }
+    float getHumidity() { 
+        float t = NAN, h = NAN;
+        sscanf(result.c_str(), "%f,%f", &t, &h);
+        return t;
     }
     static SchemaParser::RegisterClass reg;
 };
@@ -370,7 +388,7 @@ public:
     string makeReport() { return sfmt("%d", digitalRead(pin)); }
     void setValue(const string &s) { 
         sscanf(s.c_str(), "%d", &mode);
-        OUT("SensorOutput pin %d => %d", pin, mode);
+        OUT("Setting pin %d => %d", pin, mode);
         pinMode(pin, OUTPUT);
         digitalWrite(pin, mode);
         result = s;
@@ -398,7 +416,6 @@ public:
     string makeReport() { return value; }
     void setValue(const string &s) { 
         value = s;
-        //OUT("setting variable %s to %s", name.c_str(), value.c_str());
     }
     static SchemaParser::RegisterClass reg;
 };
@@ -422,9 +439,9 @@ class RemoteSensorServer : public RemoteSensorProtocol {
         return rval;
     }
     uint32_t lastReportMs = 0, nextSleepTimeMs = 0; // todo avoid rollover by tracking start of sleep period, not end of sleep period
-    int serverSleepSeconds = 300;
-    int serverSleepLinger = 60;
 public: 
+    int serverSleepSeconds = 90;
+    int serverSleepLinger = 45;
     RemoteSensorServer(vector<RemoteSensorModule *> m) : modules(m) {}    
     void onReceive(const string &s) {
         if (s.find(specialWords.ACK) == 0) 
@@ -434,7 +451,7 @@ public:
         incomingMac = in[specialWords.MAC];
         incomingHash = in[specialWords.SCHASH];
         if (in.find(specialWords.SERVER) != in.end()) return;
-        OUT("%09.4f server <<<< %s", millis() / 1000.0, s.c_str());
+        printf("%09.4f server <<<< %s\n", millis() / 1000.0, s.c_str());
 
         bool packetHandled = false;
         for(auto p : modules) { 
@@ -478,17 +495,17 @@ public:
                         + sfmt("%d ", moduleSleepSec) + p->makeAllSetValues();
                     write(out);
                 } else {
-                    OUT("%s != %s", incomingHash.c_str(), hash.c_str());
+                    printf("HASH: %s != %s\n", incomingHash.c_str(), hash.c_str());
                 }
             }
         }
         if (!packetHandled && incomingMac != "") { 
-            OUT("Unknown MAC: %s", s.c_str());
+            printf("Unknown MAC: %s\n", s.c_str());
             for(auto p : modules) { 
                 if (p->mac == "auto") {
                     p->mac = incomingMac;
                     string schema = p->makeAllSchema();
-                    OUT("Auto assigning incoming mac %s to sensor %s", p->mac.c_str(), schema.c_str());
+                    printf("Auto assigning incoming mac %s to sensor %s\n", p->mac.c_str(), schema.c_str());
                     break;
                 }
             }
@@ -496,7 +513,7 @@ public:
     }
 
     void write(const string &s) { 
-        OUT("%09.4f server >>>> %s", millis() / 1000.0, s.c_str());
+        printf("%09.4f server >>>> %s\n", millis() / 1000.0, s.c_str());
         fakeEspNow.write(s);
     }
 
@@ -507,21 +524,27 @@ public:
         string in = fakeEspNow.read();
         if (in != "") 
             onReceive(in);
-        if (j.secTick(5)) { 
-            OUT("Seen %d/%d modules, last traffic %d sec ago", countSeen(), modules.size(), (millis() - lastReportMs) / 1000);
+        static HzTimer timer(.1);
+        if (timer.tick()) { 
+            printf("%09.3f Seen %d/%d modules, last traffic %d sec ago\n", millis() / 1000.0, countSeen(), (int)modules.size(), (int)(millis() - lastReportMs) / 1000);
         }
         if (countSeen() > 0 && (nextSleepTimeMs - millis()) / 1000 > serverSleepSeconds) {
             // missing some sensors but the entire sleep period has elapsed?  Just reset to next sleep Period 
             nextSleepTimeMs = millis() + serverSleepSeconds * 1000;
         }
-
+    }
+    int getSleepRequest() { 
         if (countSeen() > 0 && countSeen() == modules.size() && (millis() - lastReportMs) > serverSleepLinger * 1000) {
             int sleepSec = (nextSleepTimeMs - millis()) / 1000;
             if (sleepSec > serverSleepSeconds)
                 sleepSec = 0;
-            for(auto p : modules) p->seen = false;
-            OUT("All %d modules accounted for, time to sleep %d sec", modules.size(), sleepSec);
-        }
+            printf("All %d modules accounted for, OK to sleep %d sec\n", (int)modules.size(), sleepSec);
+            return sleepSec;  
+        } 
+        return -1;
+    }
+    void prepareSleep(int) { 
+        for(auto p : modules) p->seen = false;
     }
 };
 
@@ -582,9 +605,9 @@ public:
                 else if (name == "SLEEP") sscanf(val.c_str(), "%d", &sleepTime);
             }
         }
-        OUT("%09.4f client <<<< %s", millis() / 1000.0, s.c_str());
+        printf("%09.4f client <<<< %s\n", millis() / 1000.0, s.c_str());
         if (updatingSchema) { 
-            OUT("Got new schema: %s", newSchema.c_str());
+            printf("Got new schema: %s\n", newSchema.c_str());
             init(newSchema);
             lastSchema = newSchema;
             string out = array->makeAllResults();
@@ -596,7 +619,7 @@ public:
         // TODO:  Write schema and shit to SPIFF
         if (sleepTime > 0) { 
             if (deepSleep) { 
-                OUT("%09.4f: Sleeping %d seconds...", millis() / 1000.0, sleepTime);
+                printf("%09.4f: Sleeping %d seconds...\n", millis() / 1000.0, sleepTime);
                 WiFi.disconnect(true);  // Disconnect from the network
                 WiFi.mode(WIFI_OFF);    // Switch WiFi off
                 int rc = esp_sleep_enable_timer_wakeup(1000000LL * sleepTime);
@@ -612,7 +635,7 @@ public:
         }
     }
     void write(const string &s) { 
-        OUT("%09.4f client >>>> %s", millis() / 1000.0, s.c_str());
+        printf("%09.4f client >>>> %s\n", millis() / 1000.0, s.c_str());
         fakeEspNow.write(s);
     }
     void run() {
@@ -626,7 +649,8 @@ public:
                 lastReceive = millis();
             }
         } else { 
-            if (array != NULL && (j.once() || j.secTick(.2))) { 
+            static HzTimer timer(.2, true);
+            if (array != NULL && timer.secTick(.5)) { 
                 string out = array->makeAllResults() + "ENDLINE=1 ";
                 write(out);
             }

@@ -1388,9 +1388,30 @@ public:
 	}
 };
 
-#define PRINTLINE() if(1) { printf("%9.3f %d\n", millis() / 1000.0, __LINE__); } 
+#define PRINTLINE() if(1) { printf("%09.3f "__FILE__ " line %d\n", millis() / 1000.0, __LINE__); } 
 
 const char *reset_reason_string(int reason);
+
+class HzTimer { 
+public:
+	HzTimer(float h, bool forceFirst = true) : force(forceFirst), hertz(h) {}
+	bool force;
+	float hertz;
+	uint32_t last = 0;
+	bool hz(float h) {
+		bool rval = force || (millis() - last) > 1000.0 / h;
+			if (rval) {
+				last = millis();
+				force = false;
+			}
+		return rval;
+	}
+	bool tick() { return hz(hertz); }
+	bool secTick(float sec) { return sec > 0 ? hz(1/sec) : true; }
+};
+	
+int getResetReason(int cpu = 0);
+
 
 //#endif
 #ifdef CSIM

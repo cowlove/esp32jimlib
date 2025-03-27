@@ -440,7 +440,9 @@ int getLedPin() {
 }
 
 
-const char *reset_reason_string(RESET_REASON reason) {
+int getResetReason(int cpu) { return rtc_get_reset_reason(cpu); }
+
+const char *reset_reason_string(int reason) {
   switch ( reason)
   {
     case 1 : return ("POWERON_RESET");break;          /**<1, Vbat power on reset*/

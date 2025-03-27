@@ -9,8 +9,8 @@
 struct DHT {
     DHT(int, int) {}
     void begin() {}
-    float readTemperature() { return 27.01; }
-    float readHumidity() { return 57.02; }
+    float readTemperature(bool t = false, bool f = false) { return 27.01; }
+    float readHumidity(bool f = false) { return 57.02; }
 };
 #define DHT22 0
 
@@ -310,7 +310,7 @@ class SensorDHT : public Sensor {
 public:
     SensorDHT(RemoteSensorModule *p, const char *n, int _pin) : Sensor(p, n), pin(_pin), dht(_pin, DHT22) {}    
     void begin() override { 
-        OUT("%09.3f DHT begin()", millis()/1000.0);
+        printf("%09.3f DHT begin()\n", millis()/1000.0);
         pinMode(pin, INPUT_PULLUP); 
         dht.begin(); 
     }
@@ -325,7 +325,7 @@ public:
                 break;
             } 
             retries++;
-            OUT("%09.3f DHT read failure t:%.2f h:%.2f, retry #%d, total retries %d...", millis()/1000.0, t, h, r, retries);
+            printf("%09.3f DHT read failure t:%.2f h:%.2f, retry #%d, total retries %d\n", millis()/1000.0, t, h, r, retries);
             wdtReset();
             //delay(300);
         } 
@@ -388,7 +388,7 @@ public:
     string makeReport() { return sfmt("%d", digitalRead(pin)); }
     void setValue(const string &s) { 
         sscanf(s.c_str(), "%d", &mode);
-        OUT("Setting pin %d => %d", pin, mode);
+        printf("Setting pin %d => %d\n", pin, mode);
         pinMode(pin, OUTPUT);
         digitalWrite(pin, mode);
         result = s;

@@ -69,9 +69,9 @@ public:
     virtual void setValue(const string &s) {}
     string name = "";
     string result = "";
-    float asFloat() { return strtof(result.c_str(), NULL); }
-    string asString() { return result; }
-    uint32_t getAgeMs() { return millis() - updateTimeMs; }
+    float asFloat() const { return strtof(result.c_str(), NULL); }
+    string asString() const { return result; }
+    uint32_t getAgeMs() const { return millis() - updateTimeMs; }
 };
 
 class SchemaParser : protected RemoteSensorProtocol { 
@@ -317,7 +317,7 @@ public:
     string makeSchema() override { return sfmt("DHT%d", pin); }
     string makeReport() override {
         float t = NAN, h = NAN;
-        for(int r = 0; r < 15; r++) { 
+        for(int r = 0; r < 15; r++) {
             delay(350); // no idea why, seems to persist even after microcontroller has booted and stabilized
             h = dht.readHumidity(true);
             t = dht.readTemperature();
@@ -331,12 +331,12 @@ public:
         } 
         return sfmt("%.2f,%.2f,%d", t, h, retries);
     }
-    float getTemperature() { 
+    float getTemperature() const { 
         float t = NAN, h = NAN;
         sscanf(result.c_str(), "%f,%f", &t, &h);
         return t;
     }
-    float getHumidity() { 
+    float getHumidity() const { 
         float t = NAN, h = NAN;
         sscanf(result.c_str(), "%f,%f", &t, &h);
         return t;
@@ -534,7 +534,7 @@ public:
         }
     }
     int getSleepRequest() { 
-        if (countSeen() > 0 && countSeen() == modules.size() && (millis() - lastReportMs) > serverSleepLinger * 1000) {
+        if (countSeen() == modules.size() && (millis() - lastReportMs) > serverSleepLinger * 1000) {
             int sleepSec = (nextSleepTimeMs - millis()) / 1000;
             if (sleepSec > serverSleepSeconds)
                 sleepSec = 0;
@@ -557,6 +557,7 @@ class RemoteSensorClient : public RemoteSensorProtocol {
     uint32_t inhibitStartMs, inhibitMs = 0;
     bool deepSleep = true;
 public:
+    bool channelHop = false;
     void csimOverrideMac(const string &s) { 
         mac = s;
         if (array != NULL) delete array;
@@ -655,7 +656,7 @@ public:
                 write(out);
             }
             // channel hopping
-            if (millis() - lastReceive > 10000) {
+            if (channelHop == true && millis() - lastReceive > 10000) {
                 espNowMux.defaultChannel = (espNowMux.defaultChannel + 1) % 14;
                 espNowMux.stop();
                 espNowMux.firstInit = true;

@@ -148,7 +148,10 @@ void webUpgrade(const char *u) {
 	int errors = 0;
 	int fwLen = 0;
  
-	Update.begin(UPDATE_SIZE_UNKNOWN);
+	;
+	if (Update.begin(UPDATE_SIZE_UNKNOWN) == false) { 
+		dbg("Update.begin() failed with %s", Update.errorString());
+	}
 	Serial.println("Updating firmware...");
 
 	while(true) { 
@@ -158,7 +161,7 @@ void webUpgrade(const char *u) {
 		//client.begin(wc, url);
 		client.begin(url);
 		int resp = client.GET();
-		//dbg("HTTPClient.get() returned %d\n", resp);
+		//dbg("HTTPClient.get() returned %d", resp);
 		if(resp != 200) {
 			dbg("Get failed\n");
 			Serial.print(client.getString());
@@ -175,7 +178,9 @@ void webUpgrade(const char *u) {
 		//Serial.printf("FW Size: %u\n",totalLength);
 		if (totalLength == 0) { 
 			Serial.printf("\nUpdate Success, Total Size: %u\nRebooting...\n", fwLen);
-			Update.end(true);
+			if (Update.end(true) == false) { 
+				dbg("Update.end() failed with %s", Update.errorString());
+			};
 			ESP.restart();
 			return;				
 		}
@@ -435,7 +440,7 @@ int getLedPin() {
 	if (mac == "9C9C1FC9BE94") return 2;
 	if (mac == "9C9C1FCB0920") return 2;
 	if (mac == "2462ABDDCB34") return 19; // TTGO 1.8 TFT board 
-	Serial.printf("MAC %s not found in getLedPin, defaulting to pin 2\n", mac.c_str());
+	//Serial.printf("MAC %s not found in getLedPin, defaulting to pin 2\n", mac.c_str());
 	return 2;
 }
 
@@ -461,5 +466,6 @@ const char *reset_reason_string(int reason) {
     case 15 : return ("RTCWDT_BROWN_OUT_RESET");break;/**<15, Reset when the vdd voltage is not stable*/
     case 16 : return ("RTCWDT_RTC_RESET");break;      /**<16, RTC Watch dog reset digital core and rtc module*/
   }
+  printf("unknown reset reason %d\n", reason);
   return ("UNKNOWN_RESET_REASON");
 }

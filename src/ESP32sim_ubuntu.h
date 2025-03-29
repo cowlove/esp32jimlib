@@ -41,7 +41,7 @@ using std::max;
 using std::deque;
 using std::to_string;
 
-
+#define ARDUINO_VARIANT "csim"
 #ifndef GIT_VERSION
 #define GIT_VERSION "no-git-version"
 #endif
@@ -157,6 +157,7 @@ static inline void esp_sleep_pd_config(int, int) {}
 static inline void ledc_update_duty(int, int) {}
 //#define LEDC_LS_MODE 0
 static inline void ledc_set_duty(int, int, int) {}
+static inline int ledc_get_duty(int, int) { return 0; }
 static inline void ledc_timer_config(void *) {}
 void ledc_channel_config(void *) {}
 
@@ -408,7 +409,7 @@ public:
 	IPAddress(int, int, int, int) {}
 	IPAddress() {}
 	void fromString(const char *) {}
-	String toString() const { return String("0.0.0.0"); }	
+	String toString() const { return String("10.0.0.1"); }	
     int operator [](int) { return 0; }  
 };
 
@@ -533,7 +534,7 @@ struct FakeWiFi {
 	int channel() { return 0; }
 	void disconnect(bool) {}
 	void scanDelete() {}
-	String SSID(int i = 0) { return String("FakeWiFi"); }
+	String SSID(int i = 0) { return String("CSIM"); }
 	int waitForConnectResult() { return 0; }
 	int scanNetworks() { return 0; }
 	int RSSI(int i = 0) { return 63; }
@@ -548,14 +549,20 @@ class WiFiClientSecure {
 };
  
 struct WiFiClient { 
-	int available() { return 0; }
-	int readBytes(uint8_t *, int) { return 0; }
-	int connected() { return 0; }
+	string buffer;
+	int available() { return buffer.length(); }
+	int readBytes(uint8_t *buf, int len) {
+		int n = min(len, (int)buffer.length());
+		memcpy(buf, buffer.c_str(), n);
+		buffer.erase(0, n);
+		return n;
+	}
+	int connected() { return 1; }
 	void setTimeout(int) {}
 	void stop() {}
 	void flush() {}
 	int write(const uint8_t *, int) { return 0; }
-	int read(uint8_t *, int) { return 0; }
+	int read(uint8_t *buf, int len) { return this->readBytes(buf, len); }
 	int connect(const char *, int, int tmo = 0) { return 0; } 
 };
 
@@ -567,14 +574,28 @@ struct WiFiServer {
 
 class HTTPClient { 
 	string header1, header2, response, url;
+	WiFiClient wc;
 	public:
     int begin(const char *url) { this->url = url; return 0; }
 	int begin(WiFiClientSecure, const char *) { return 0; }
 	String getString() { return String(response.c_str()); }
-	int GET() { return 0; }
-	int getSize() { return 0; }
-	WiFiClient *getStreamPtr() { return 0; } 
-	bool connected() { return 0; } 
+	int GET() { 
+		string cmd = "curl --silent -X GET '" + url + "'";
+		FILE *fp = popen(cmd.c_str(), "r");
+		int bufsz = 128 * 1024;
+		char *buf = (char *)malloc(bufsz);
+		int n = fread(buf, 1, bufsz, fp);
+		wc.buffer.assign(buf, n);
+		fclose(fp);
+		free(buf);
+		//printf("GET() read %d bytes from cmd '%s'\n", n, cmd.c_str());
+		//printf("DATA: %s\n", wc.buffer.c_str());
+		return 200;
+	
+	}
+	int getSize() { return wc.buffer.length(); }
+	WiFiClient *getStreamPtr() { return &wc; } 
+	bool connected() { return 1; } 
 	void end() {}
 	void addHeader(const char *h1, const char *h2) { header1 = h1; header2 = h2; }
 	int POST(const char *postData) {
@@ -927,12 +948,22 @@ typedef MPU9250_DMP MPU9250_asukiaaa;
 #define UPLOAD_FILE_WRITE 0 
 #define UPDATE_SIZE_UNKNOWN 0
 
-struct {
+struct Update_t {
+	int fd;
 	int hasError() { return 0; } 
-	int write(const uint8_t *, int) { return 0; }
-	int begin(int) { return 0; } 
+	int write(const uint8_t *buf, int len) { 
+		return ::write(fd, buf, len); 
+	}
+	bool begin(int) { 
+		fd = open("update.bin", O_CREAT|O_WRONLY, 0644);
+		return true; 
+	} 
 	void printError(FakeSerial &) {}
-	int end(int) { return 0; }
+	bool end(int) { 
+		close(fd);
+		return true; 
+	}
+	const char *errorString() { return "Update error"; }
 } Update;
 
 class HTTPUpload {

@@ -7,8 +7,8 @@
 #include "DHT.h"
 #endif
 
-#include <string>
-#include <vector>
+#include "jimlib.h"
+
 using std::string;
 using std::vector;
 

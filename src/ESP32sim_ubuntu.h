@@ -323,8 +323,10 @@ public:
 	}
 	int pins[128];
 	virtual int analogRead(int p) { 
-		// TODO register a callback
 		return pins[p]; 
+	}
+	void csim_analogSet(int p, int v) {
+		pins[p] = v;
 	}
 	virtual void digitalWrite(int p, int v) { pins[p] = v; }
 	static ESP32sim_pinManager *manager;
@@ -358,6 +360,7 @@ void yield() { intMan.run(); }
 //void analogSetCycles(int) {}
 void adcAttachPin(int) {}
 int analogRead(int p) { return ESP32sim_pinManager::manager->analogRead(p); } 
+void csim_analogSet(int p, int v) { ESP32sim_pinManager::manager->csim_analogSet(p, v); }
 
 #define radians(x) ((x)*M_PI/180)
 #define degrees(x) ((x)*180.0/M_PI)

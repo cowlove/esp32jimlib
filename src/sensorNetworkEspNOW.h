@@ -429,6 +429,8 @@ SchemaParser::RegisterClass SensorVariable::reg([](const string &s)->Sensor * {
 class RemoteSensorServer : public RemoteSensorProtocol { 
     ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true);
     vector<RemoteSensorModule *> modules;
+    uint32_t lastReportMs = 0, nextSleepTimeMs = 0; // todo avoid rollover by tracking start of sleep period, not end of sleep period
+public: 
     int countSeen() { 
         int rval = 0;
         for(auto p : modules) { 
@@ -436,8 +438,9 @@ class RemoteSensorServer : public RemoteSensorProtocol {
         }
         return rval;
     }
-    uint32_t lastReportMs = 0, nextSleepTimeMs = 0; // todo avoid rollover by tracking start of sleep period, not end of sleep period
-public: 
+    float lastTrafficSec() { 
+        return (millis() - lastReportMs) / 1000.0;
+    }
     int serverSleepSeconds = 90;
     int serverSleepLinger = 45;
     RemoteSensorServer(vector<RemoteSensorModule *> m) : modules(m) {}    
@@ -524,7 +527,8 @@ public:
             onReceive(in);
         static HzTimer timer(.1);
         if (timer.tick()) { 
-            printf("%09.3f Seen %d/%d modules, last traffic %d sec ago\n", millis() / 1000.0, countSeen(), (int)modules.size(), (int)(millis() - lastReportMs) / 1000);
+            //printf("%09.3f Seen %d/%d modules, last traffic %d sec ago\n",
+            // millis() / 1000.0, countSeen(), (int)modules.size(), (int)(millis() - lastReportMs) / 1000);
         }
         if (countSeen() > 0 && (nextSleepTimeMs - millis()) / 1000 > serverSleepSeconds) {
             // missing some sensors but the entire sleep period has elapsed?  Just reset to next sleep Period 

@@ -80,10 +80,28 @@ public:
 } csim_flags;
 
 #define byte char
+
 static uint64_t _micros = 0;
 static uint64_t _microsMax = 0xffffffff;
-uint64_t micros() { return _microsMax > 0 ? ++_micros & _microsMax : ++_micros; }
-uint64_t millis() { return ++_micros / 1000; }
+
+
+class ESP32sim {
+public:
+	vector<ESP32sim_Module *> modules;
+	struct TimerInfo { 
+		uint64_t last;
+		uint64_t period;
+		function<void(void)> func;
+	};
+	typedef vector<TimerInfo> timers;
+	void delayMicroseconds(long long us);
+	void main(int argc, char **argv);
+	void exit();
+} esp32sim;
+
+uint64_t micros();
+uint64_t millis();
+
 void ESP32sim_exit(); 
 
 // Stub out FreeRTOS stuff 
@@ -266,39 +284,6 @@ static inline void ledc_timer_config(void *) {}
 void ledc_channel_config(void *) {}
 
 
-
-// Takes an input of a text file with line-delimited usec intervals between 
-// interrupts, delivers an interrupt to the sketch-provided ISR
-// TODO: only handles one ISR and one interrupt source 
-class InterruptManager { 
-	ifstream ifile;
-	uint64_t nextInt = 0; 
-	int count = 0;
-public:
-	void (*intFunc)() = NULL;
-	void getNext() { 
-		int delta;
-		ifile >> delta;
-		delta = min(100000, delta);
-		nextInt += delta;
-		ifile >> delta;
-		delta = min(50000, delta);
-		nextInt += delta;
-		count++;
-	}
-	void setInterruptFile(char const *fn) { 
-		ifile = ifstream(fn, ios_base::in);
-		getNext();
-	}
-	void run() {
-		if (intFunc != NULL && ifile && micros() >= nextInt) { 
-			intFunc();
-			getNext();
-		}
-	}
-} intMan;
-
-
 // simple pin manager to simply return values that were written
 class ESP32sim_pinManager : public ESP32sim_Module {
 public:
@@ -343,6 +328,37 @@ public:
 
 ESP32sim_pinManager *ESP32sim_pinManager::manager = &pinManObject;
 
+// Takes an input of a text file with line-delimited usec intervals between 
+// interrupts, delivers an interrupt to the sketch-provided ISR
+// TODO: only handles one ISR and one interrupt source 
+class InterruptManager { 
+	ifstream ifile;
+	uint64_t nextInt = 0; 
+	int count = 0;
+public:
+	void (*intFunc)() = NULL;
+	void getNext() { 
+		int delta;
+		ifile >> delta;
+		delta = min(100000, delta);
+		nextInt += delta;
+		ifile >> delta;
+		delta = min(50000, delta);
+		nextInt += delta;
+		count++;
+	}
+	void setInterruptFile(char const *fn) { 
+		ifile = ifstream(fn, ios_base::in);
+		getNext();
+	}
+	void run() {
+		if (intFunc != NULL && ifile && micros() >= nextInt) { 
+			intFunc();
+			getNext();
+		}
+	}
+} intMan;
+
 void pinMode(int, int) {}
 void digitalWrite(int p, int v) { ESP32sim_pinManager::manager->digitalWrite(p, v); };
 int digitalRead(int p) { return ESP32sim_pinManager::manager->digitalRead(p); }
@@ -354,7 +370,7 @@ void ledcAttachPin(int, int) {}
 void ledcAttachChannel(int, int, int, int) {}
 #endif
 void ledcDetachPin(int) {}
-void delayMicroseconds(int m) { _micros += m; intMan.run(); }
+void delayMicroseconds(int m);
 void delay(int m) { delayMicroseconds(m*1000); }
 void yield() { intMan.run(); }
 //void analogSetCycles(int) {}
@@ -1109,80 +1125,6 @@ public:
 void setup(void);
 void loop(void);
 
-class ESP32sim {
-public:
-	vector<ESP32sim_Module *> modules;
-	struct TimerInfo { 
-		uint64_t last;
-		uint64_t period;
-		function<void(void)> func;
-	};
-	typedef vector<TimerInfo> timers;
-	void main(int argc, char **argv) {
-		float seconds = 0;
-		Serial.toConsole = true;
-		for(char **a = argv + 1; a < argv+argc; a++) {
-			if (strcmp(*a, "--serial") == 0) {
-				printf("--serial is depricated, use --serialConsole\n");
-				::exit(-1);
-			}
-			else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
-			else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%f", &seconds); 
-			else if (strcmp(*a, "--mac") == 0) { 
-				sscanf(*(++a), "%lx", &csim_mac);
-			} else if (strcmp(*a, "--espnowPipe") == 0) { 
-				ESPNOW_sendHandler= new ESPNOW_csimPipe(*(++a), *(++a));
-			} else if (strcmp(*a, "--espnowOneProg") == 0) { 
-				ESPNOW_sendHandler= new ESPNOW_csimOneProg();
-				csim_flags.OneProg = true;
-			} else if (strcmp(*a, "--interruptFile") == 0) { 
-				intMan.setInterruptFile(*(++a));
-			} else if (strcmp(*a, "--button") == 0) {
-                        int pin, clicks = 1, longclick = 0;
-                        float tim;
-                        sscanf(*(++a), "%f,%d,%d,%d", &tim, &pin, &clicks, &longclick);
-                        ESP32sim_pinManager::manager->addPress(pin, tim, clicks, longclick);
-			} else if (strcmp(*a, "--serialInput") == 0) {
-				float seconds;
-				sscanf(*(++a), "%f", &seconds);
-				Serial.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
-			
-			} else if (strcmp(*a, "--serial2Input") == 0) {
-				float seconds;
-				sscanf(*(++a), "%f", &seconds);
-				Serial2.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
-			} else for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
-				(*it)->parseArg(a, argv + argc);
-			}
-		}
-		
-		for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
-			(*it)->setup();
-		setup();
-
-		uint64_t lastMillis = 0;
-		while(seconds <= 0 || _micros / 1000000.0 < seconds) {
-			uint64_t now = millis();
-			//for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
-			for(auto it : modules) {
-				it->loop();
-			}
-			loop();
-			intMan.run();
-
-			//if (floor(now / 1000) != floor(lastMillis / 1000)) { 
-			//	ESP32sim_JDisplay_forceUpdate();	
-			//}
-			lastMillis = now;
-		}
-	}
-	void exit() { 
-		for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
-			(*it)->done();	
-		::exit(0);
-	}
-} esp32sim;
-
 void ESP32sim_exit() { 	esp32sim.exit(); }
 
 inline ESP32sim_Module::ESP32sim_Module() { 
@@ -1212,5 +1154,86 @@ struct DHT {
 
 
 #define ESP_ARDUINO_VERSION_STR "1.1.1"
+
+
+void ESP32sim::main(int argc, char **argv) {
+	float seconds = 0;
+	Serial.toConsole = true;
+	for(char **a = argv + 1; a < argv+argc; a++) {
+		if (strcmp(*a, "--serial") == 0) {
+			printf("--serial is depricated, use --serialConsole\n");
+			::exit(-1);
+		}
+		else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
+		else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%f", &seconds); 
+		else if (strcmp(*a, "--mac") == 0) { 
+			sscanf(*(++a), "%lx", &csim_mac);
+		} else if (strcmp(*a, "--espnowPipe") == 0) { 
+			ESPNOW_sendHandler= new ESPNOW_csimPipe(*(++a), *(++a));
+		} else if (strcmp(*a, "--espnowOneProg") == 0) { 
+			ESPNOW_sendHandler= new ESPNOW_csimOneProg();
+			csim_flags.OneProg = true;
+		} else if (strcmp(*a, "--interruptFile") == 0) { 
+			intMan.setInterruptFile(*(++a));
+		} else if (strcmp(*a, "--button") == 0) {
+					int pin, clicks = 1, longclick = 0;
+					float tim;
+					sscanf(*(++a), "%f,%d,%d,%d", &tim, &pin, &clicks, &longclick);
+					ESP32sim_pinManager::manager->addPress(pin, tim, clicks, longclick);
+		} else if (strcmp(*a, "--serialInput") == 0) {
+			float seconds;
+			sscanf(*(++a), "%f", &seconds);
+			Serial.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
+		
+		} else if (strcmp(*a, "--serial2Input") == 0) {
+			float seconds;
+			sscanf(*(++a), "%f", &seconds);
+			Serial2.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
+		} else for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
+			(*it)->parseArg(a, argv + argc);
+		}
+	}
+	
+	for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
+		(*it)->setup();
+	setup();
+
+	uint64_t lastMillis = 0;
+	while(seconds <= 0 || _micros / 1000000.0 < seconds) {
+		uint64_t now = millis();
+		//for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
+		for(auto it : modules) {
+			it->loop();
+		}
+		loop();
+		intMan.run();
+
+		//if (floor(now / 1000) != floor(lastMillis / 1000)) { 
+		//	ESP32sim_JDisplay_forceUpdate();	
+		//}
+		lastMillis = now;
+	}
+}
+void ESP32sim::exit() { 
+	for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
+		(*it)->done();	
+	::exit(0);
+}
+void ESP32sim::delayMicroseconds(long long us) { 
+	do {
+		int step = min(10000LL, us);
+		_micros += step;
+		for(auto it : modules) {
+			it->loop();
+		}
+		intMan.run();
+		us -= step;
+	} while(us > 0);
+}
+
+void delayMicroseconds(int m) { esp32sim.delayMicroseconds(m); }
+
+uint64_t micros() { return _microsMax > 0 ? ++_micros & _microsMax : ++_micros; }
+uint64_t millis() { return ++_micros / 1000; }
 
 #endif // #ifdef _ESP32SIM_UBUNTU_H_

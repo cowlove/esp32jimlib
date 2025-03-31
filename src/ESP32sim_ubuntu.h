@@ -126,41 +126,6 @@ esp_err_t esp_task_wdt_add(void *) { return 0; }
 esp_err_t esp_task_wdt_delete(const void *) { return 0; }
 int rtc_get_reset_reason(int) { return 1; } 
 
-struct ledc_channel_config_t {
-	int gpio_num, speed_mode, channel, timer_sel, duty, hpoint;
-};
-struct ledc_timer_config_t  {
-	int speed_mode,          // timer mode
-	duty_resolution, // resolution of PWM duty
-	timer_num,          // timer index
-	freq_hz, 
-	clk_cfg;
-};
-
-typedef int ledc_timer_t;
-typedef int ledc_mode_t;
-typedef int ledc_channel_t;
-
-#define LEDC_CHANNEL_2 2
-#define LEDC_TIMER_0 0 
-#define LEDC_LOW_SPEED_MODE 0
-#define LEDC_TIMER_6_BIT 0 
-#define LEDC_USE_RTC8M_CLK 0 
-
-
-
-static const int CONFIG_CONSOLE_UART_NUM = 0;
-static inline void uart_tx_wait_idle(int) {}
-static inline void esp_sleep_pd_config(int, int) {}
-#define ESP_PD_DOMAIN_RTC_PERIPH 0
-#define ESP_PD_OPTION_AUTO 0 
-static inline void ledc_update_duty(int, int) {}
-//#define LEDC_LS_MODE 0
-static inline void ledc_set_duty(int, int, int) {}
-static inline int ledc_get_duty(int, int) { return 0; }
-static inline void ledc_timer_config(void *) {}
-void ledc_channel_config(void *) {}
-
 #define ADC1_CHANNEL_1 0
 #define ADC1_CHANNEL_2 0
 #define ADC1_CHANNEL_3 0
@@ -265,6 +230,42 @@ static int ESP32sim_currentPwm[16];
 void ledcWrite(int chan, int val) {
 		ESP32sim_currentPwm[chan] = val;
 } 
+struct ledc_channel_config_t {
+	int gpio_num, speed_mode, channel, timer_sel, duty, hpoint;
+};
+struct ledc_timer_config_t  {
+	int speed_mode,          // timer mode
+	duty_resolution, // resolution of PWM duty
+	timer_num,          // timer index
+	freq_hz, 
+	clk_cfg;
+};
+
+typedef int ledc_timer_t;
+typedef int ledc_mode_t;
+typedef int ledc_channel_t;
+
+#define LEDC_CHANNEL_2 2
+#define LEDC_TIMER_0 0 
+#define LEDC_LOW_SPEED_MODE 0
+#define LEDC_TIMER_6_BIT 0 
+#define LEDC_USE_RTC8M_CLK 0 
+
+static const int CONFIG_CONSOLE_UART_NUM = 0;
+static inline void uart_tx_wait_idle(int) {}
+static inline void esp_sleep_pd_config(int, int) {}
+#define ESP_PD_DOMAIN_RTC_PERIPH 0
+#define ESP_PD_OPTION_AUTO 0 
+static inline void ledc_update_duty(int, int) {}
+//#define LEDC_LS_MODE 0
+static inline void ledc_set_duty(int, int chan, int val) {
+	ESP32sim_currentPwm[chan] = val;
+}
+static inline int ledc_get_duty(int, int) { return 0; }
+static inline void ledc_timer_config(void *) {}
+void ledc_channel_config(void *) {}
+
+
 
 // Takes an input of a text file with line-delimited usec intervals between 
 // interrupts, delivers an interrupt to the sketch-provided ISR
@@ -1185,6 +1186,24 @@ inline ESP32sim_Module::ESP32sim_Module() {
 int main(int argc, char **argv) {
 	esp32sim.main(argc, argv);
 }
+
+struct csim_DHTSimulator { 
+	map<int,float> temp, humidity;
+	void csim_set(int pin, float t, float h) { temp[pin] = t; humidity[pin] = h; }
+	float getTemp(int pin) { return temp[pin]; }
+	float getHumidity(int pin) { return humidity[pin]; }
+} csim_dht;
+
+struct DHT {
+	int pin;
+    DHT(int p , int) : pin(p) { csim_dht.csim_set(pin, 22.22, 77.77); } 
+	void begin() {}
+    float readTemperature(bool t = false, bool f = false) { return csim_dht.getTemp(pin); }
+    float readHumidity(bool f = false) { return csim_dht.getHumidity(pin); }
+};
+
+#define DHT22 0
+
 
 #define ESP_ARDUINO_VERSION_STR "1.1.1"
 

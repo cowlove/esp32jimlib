@@ -5,15 +5,6 @@
 #include "Arduino_CRC32.h" 
 #ifndef CSIM
 #include "DHT.h"
-#else 
-struct DHT {
-    DHT(int, int) {}
-    void begin() {}
-    float readTemperature(bool t = false, bool f = false) { return 27.01; }
-    float readHumidity(bool f = false) { return 57.02; }
-};
-#define DHT22 0
-
 #endif
 
 #include <string>
@@ -304,10 +295,10 @@ SchemaParser::RegisterClass SensorADC::reg([](const string &s)->Sensor * {
 });
 
 class SensorDHT : public Sensor { 
-    DHT dht;
     int pin;
     int retries = 0;
 public:
+    DHT dht;
     SensorDHT(RemoteSensorModule *p, const char *n, int _pin) : Sensor(p, n), pin(_pin), dht(_pin, DHT22) {}    
     void begin() override { 
         printf("%09.3f DHT begin()\n", millis()/1000.0);
@@ -325,7 +316,7 @@ public:
                 break;
             } 
             retries++;
-            printf("%09.3f DHT read failure t:%.2f h:%.2f, retry #%d, total retries %d\n", millis()/1000.0, t, h, r, retries);
+            printf("%09.3f DHT read     ure t:%.2f h:%.2f, retry #%d, total retries %d\n", millis()/1000.0, t, h, r, retries);
             wdtReset();
             //delay(300);
         } 
@@ -566,6 +557,9 @@ public:
         init(sch);
         deepSleep = false;
     } 
+    Sensor *findByName(const char *n) { 
+        return array == NULL ? NULL : array->findByName(n);
+    }
     RemoteSensorClient() { 
         string s = lastSchema;
         espNowMux.defaultChannel = lastChannel; 
@@ -648,6 +642,8 @@ public:
             if (millis() - inhibitStartMs > inhibitMs) { 
                 inhibitMs = 0;
                 lastReceive = millis();
+                string sch = lastSchema;
+                init(sch);
             }
         } else { 
             static HzTimer timer(.2, true);

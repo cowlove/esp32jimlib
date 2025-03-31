@@ -564,7 +564,6 @@ static inline const String &basename_strip_ext(const char *fn) {
 	return rval;
 }
 
-
 const String &getMacAddress();
 
 using std::string;
@@ -578,8 +577,9 @@ template<> inline string toString(const int &v) { return sfmt("%d", v); }
 template<> inline string toString(const float &v) { return sfmt("%f", v); }
 template<> inline string toString(const string &s) { return s; }
 
+#define LP() printf("%09.3f %s:%d\n", millis() / 1000.0, basename(__FILE__), __LINE__)
 template<> inline bool fromString(const string &s, std::vector<string> &v) { 
-	v = split(s, '\n'); 
+	v = split(s, '\n');
 	return true; 
 }
 

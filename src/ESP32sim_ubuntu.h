@@ -232,10 +232,14 @@ typedef int ota_error_t;
 #define OTA_RECEIVE_ERROR 0 
 #define OTA_END_ERROR 0 
 
+#include <malloc.h>
 struct FakeESP {
-	int getFreeHeap() { return 0; }
+	uint32_t getFreeHeap() { 
+		struct mallinfo2 mi = mallinfo2();
+		return 16 * 1024 * 1024 - mi.uordblks;
+	}
 	void restart() {}
-	int getChipId() { return 0xdeadbeef; }
+	uint32_t getChipId() { return 0xdeadbeef; }
 } ESP;
 
 struct WiFiManager {
@@ -1181,5 +1185,7 @@ inline ESP32sim_Module::ESP32sim_Module() {
 int main(int argc, char **argv) {
 	esp32sim.main(argc, argv);
 }
+
+#define ESP_ARDUINO_VERSION_STR "1.1.1"
 
 #endif // #ifdef _ESP32SIM_UBUNTU_H_

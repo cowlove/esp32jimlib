@@ -339,7 +339,7 @@ public:
     float getHumidity() const { 
         float t = NAN, h = NAN;
         sscanf(result.c_str(), "%f,%f", &t, &h);
-        return t;
+        return h;
     }
     static SchemaParser::RegisterClass reg;
 };

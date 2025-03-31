@@ -322,7 +322,10 @@ public:
 		setPinManager(this); 
 	}
 	int pins[128];
-	virtual int analogRead(int p) { return 1; }
+	virtual int analogRead(int p) { 
+		// TODO register a callback
+		return pins[p]; 
+	}
 	virtual void digitalWrite(int p, int v) { pins[p] = v; }
 	static ESP32sim_pinManager *manager;
 	static void setPinManager(ESP32sim_pinManager *p) { manager = p; }  

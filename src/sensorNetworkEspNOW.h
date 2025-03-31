@@ -61,6 +61,7 @@ public:
     string name = "";
     string result = "";
     float asFloat() const { return strtof(result.c_str(), NULL); }
+    int asInt() const { return strtol(result.c_str(), NULL, 10); }
     string asString() const { return result; }
     uint32_t getAgeMs() const { return millis() - updateTimeMs; }
 };
@@ -331,6 +332,12 @@ public:
         float t = NAN, h = NAN;
         sscanf(result.c_str(), "%f,%f", &t, &h);
         return h;
+    }
+    int getRetries() const { 
+        float t = NAN, h = NAN;
+        int retries = 0;
+        sscanf(result.c_str(), "%f,%f,%d", &t, &h, &retries);
+        return retries;
     }
     static SchemaParser::RegisterClass reg;
 };

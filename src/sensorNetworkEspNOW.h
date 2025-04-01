@@ -386,7 +386,7 @@ public:
     string makeReport() { return sfmt("%d", digitalRead(pin)); }
     void setValue(const string &s) { 
         sscanf(s.c_str(), "%d", &mode);
-        printf("Setting pin %d => %d\n", pin, mode);
+        printf("%09.3f Setting pin %d => %d\n", millis()/1000.0, pin, mode);
         pinMode(pin, OUTPUT);
         digitalWrite(pin, mode);
         result = s;
@@ -546,9 +546,8 @@ public:
         } 
         return -1;
     }
-    void prepareSleep(int) { 
+    void prepareSleep(float sec) { 
         for(auto p : modules) p->seen = false;
-
     }
 };
 
@@ -556,17 +555,15 @@ class RemoteSensorClient : public RemoteSensorProtocol {
     string mac = getMacAddress().c_str();
     ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true);
     RemoteSensorModule *array = NULL;
-    static SPIFFSVariable<int> lastChannel;
-    static SPIFFSVariable<string> lastSchema;
+    SPIFFSVariable<int> *lastChannel = NULL, *sleepRemainingMs;
+    SPIFFSVariable<string> *lastSchema = NULL;
     uint32_t inhibitStartMs, inhibitMs = 0;
     bool deepSleep = true;
 public:
     bool channelHop = false;
     void csimOverrideMac(const string &s) { 
         mac = s;
-        if (array != NULL) delete array;
-        array = NULL;
-        string sch = lastSchema;
+        string sch = *lastSchema;
         init(sch);
         deepSleep = false;
     } 
@@ -574,14 +571,31 @@ public:
         return array == NULL ? NULL : array->findByName(n);
     }
     RemoteSensorClient() { 
-        string s = lastSchema;
-        espNowMux.defaultChannel = lastChannel; 
-        init(s);
+        init();
     }
-    void init(const string &schema) { 
-        if (array != NULL) delete array;
+    void init(const string &schema = "") { 
+        if (array != NULL) {
+            delete array;
+            delete lastChannel;
+            delete lastSchema;
+            delete sleepRemainingMs;
+        }
+        lastChannel = new SPIFFSVariable<int>(("/sensorNetwork_lastChannel_" + mac).c_str(), 1);
+        lastSchema = new SPIFFSVariable<string>(("/sensorNetwork_lastSchema_" + mac).c_str(), "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
+        sleepRemainingMs = new SPIFFSVariable<int>(("/sensorNetwork_sleepRemaining_" + mac).c_str(), 0);
+        if (schema != "")
+            *lastSchema = schema;
         array = new RemoteSensorModule(mac.c_str(), schema.c_str());
         array->beginClient();
+        lastReceive = millis();
+        espNowMux.defaultChannel = *lastChannel; 
+        if (*sleepRemainingMs > 0) { 
+            inhibitStartMs = millis();
+            inhibitMs = (int)*sleepRemainingMs;
+            *sleepRemainingMs = 0;
+        } else { 
+            inhibitMs = inhibitStartMs = 0;
+        }
         lastReceive = millis();
     }
     void updateFirmware() {
@@ -605,7 +619,7 @@ public:
                 string val = w.substr(w.find("=") + 1);
                 if (name == "MAC") {
                     if (val != mac) return;
-                    lastChannel = espNowMux.defaultChannel;
+                    *lastChannel = espNowMux.defaultChannel;
                     lastReceive = millis();
                 }
                 else if (name == "NEWSCHEMA") updatingSchema = true;
@@ -617,7 +631,6 @@ public:
         if (updatingSchema) { 
             printf("Got new schema: %s\n", newSchema.c_str());
             init(newSchema);
-            lastSchema = newSchema;
             string out = array->makeAllResults();
             write(out);
             return;
@@ -653,10 +666,7 @@ public:
             
         if (inhibitMs > 0) { 
             if (millis() - inhibitStartMs > inhibitMs) { 
-                inhibitMs = 0;
-                lastReceive = millis();
-                string sch = lastSchema;
-                init(sch);
+                init();
             }
         } else { 
             static HzTimer timer(.2, true);
@@ -673,12 +683,13 @@ public:
             }
         }
     }
+    void setPartialDeepSleep(uint64_t usec) {
+        int remainMs = inhibitMs - (millis() - inhibitStartMs) - usec / 1000;
+        remainMs = max(0, remainMs);
+        *sleepRemainingMs = remainMs;
+    }
 };
 
-SPIFFSVariable<int> RemoteSensorClient::lastChannel 
-    = SPIFFSVariable<int>("/sensorNetwork_lastChannel2", 1);
-SPIFFSVariable<string> RemoteSensorClient::lastSchema 
-    = SPIFFSVariable<string>("/sensorNetwork_lastSchema", "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
 
 
 //static SchemaList::Register();

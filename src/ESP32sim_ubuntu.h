@@ -540,17 +540,24 @@ void gpio_hold_dis(int)  {}
 void gpio_hold_en(int)  {}
 uint64_t sleep_timer = 0;
 int esp_sleep_enable_timer_wakeup(uint64_t t) { sleep_timer = t; return 0; }
+
+// TODO move all this to csim object
+typedef std::function<void(uint64_t usec)> deepSleepHookT;
+vector<deepSleepHookT> deepSleepHooks;
+void onDeepSleep(deepSleepHookT func) { deepSleepHooks.push_back(func); }
 void esp_deep_sleep_start() {
 	double newRunSec = esp32sim.seconds - (sleep_timer + _micros) / 1000000;
 	if (newRunSec < 0) 
 		ESP32sim_exit();
 
+	for (auto i : deepSleepHooks) i(sleep_timer);
 	char *argv[128];
 	int argc = 0; 
 	for(char *const *p = esp32sim.argv; *p != NULL; p++) {
 		if (strcmp(*p, "--boot-time") == 0) p++;
 		else if (strcmp(*p, "--seconds") == 0) p++;
 		else if (strcmp(*p, "--reset-reason") == 0) p++;
+		else if (strcmp(*p, "--show-args") == 0) {/*skip arg*/}
 		else argv[argc++] = *p;
 	}
 	char bootTimeBuf[32], secondsBuf[32];
@@ -562,6 +569,7 @@ void esp_deep_sleep_start() {
 	argv[argc++] = secondsBuf; 
 	argv[argc++] = (char *)"--reset-reason";
 	argv[argc++] = (char *)"5";
+	argv[argc++] = (char *)"--show-args";
 	argv[argc++] = NULL; 
 	execv("./csim", argv); 
 }
@@ -1228,12 +1236,7 @@ void ESP32sim::main(int argc, char **argv) {
 	this->argc = argc;
 	this->argv = argv;
 	Serial.toConsole = true;
-	if (1) { 
-		printf("args: ");
-			for(char **a = argv; a < argv+argc; a++) 
-				printf("%s ", *a);
-		printf("\n");
-	}
+	int showargs = 0;
 	for(char **a = argv + 1; a < argv+argc; a++) {
 		if (strcmp(*a, "--serial") == 0) {
 			printf("--serial is depricated, use --serialConsole\n");
@@ -1242,6 +1245,7 @@ void ESP32sim::main(int argc, char **argv) {
 		else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
 		else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%lf", &seconds); 
 		else if (strcmp(*a, "--boot-time") == 0) sscanf(*(++a), "%ld", &bootTimeUsec); 
+		else if (strcmp(*a, "--show-args") == 0) showargs = 1; 
 		else if (strcmp(*a, "--reset-reason") == 0) sscanf(*(++a), "%d", &resetReason); 
 		else if (strcmp(*a, "--mac") == 0) { 
 			sscanf(*(++a), "%lx", &csim_mac);
@@ -1269,6 +1273,12 @@ void ESP32sim::main(int argc, char **argv) {
 		} else for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
 			(*it)->parseArg(a, argv + argc);
 		}
+	}
+	if (showargs) { 
+		printf("args: ");
+			for(char **a = argv; a < argv+argc; a++) 
+				printf("%s ", *a);
+		printf("\n");
 	}
 	
 	for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 

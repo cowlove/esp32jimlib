@@ -607,7 +607,7 @@ public:
 	int begin(WiFiClientSecure, const char *) { return 0; }
 	String getString() { return String(response.c_str()); }
 	int GET() { 
-		return csim_doPOSTorGET(url.c_str(), false, "", "", &wc.buffer);
+		return csim_doPOSTorGET(url.c_str(), false, "", "", wc.buffer);
 	}
 	int getSize() { return wc.buffer.length(); }
 	WiFiClient *getStreamPtr() { return &wc; } 

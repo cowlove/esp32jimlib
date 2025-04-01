@@ -555,13 +555,13 @@ void esp_deep_sleep_start() {
 	}
 	char bootTimeBuf[32], secondsBuf[32];
 	snprintf(bootTimeBuf, sizeof(bootTimeBuf), "%ld", esp32sim.bootTimeUsec + sleep_timer + _micros);
-	argv[argc++] = "--boot-time";
+	argv[argc++] = (char *)"--boot-time";
 	argv[argc++] = bootTimeBuf; 
 	snprintf(secondsBuf, sizeof(secondsBuf), "%f", newRunSec);
-	argv[argc++] = "--seconds";
+	argv[argc++] = (char *)"--seconds";
 	argv[argc++] = secondsBuf; 
-	argv[argc++] = "--reset-reason";
-	argv[argc++] = "5";
+	argv[argc++] = (char *)"--reset-reason";
+	argv[argc++] = (char *)"5";
 	argv[argc++] = NULL; 
 	execv("./csim", argv); 
 }

@@ -430,6 +430,7 @@ class RemoteSensorServer : public RemoteSensorProtocol {
     ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true);
     vector<RemoteSensorModule *> modules;
     uint32_t lastReportMs = 0, nextSleepTimeMs = 0; // todo avoid rollover by tracking start of sleep period, not end of sleep period
+    //SPIFFSVariable<int> bootStartTimeMs = SPIFFSVariable<int>("/RemoteSensorSever.bootStartTimeMs", 0);
 public: 
     int countSeen() { 
         int rval = 0;
@@ -547,6 +548,7 @@ public:
     }
     void prepareSleep(int) { 
         for(auto p : modules) p->seen = false;
+
     }
 };
 

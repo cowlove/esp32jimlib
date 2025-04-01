@@ -535,12 +535,12 @@ public:
             nextSleepTimeMs = millis() + serverSleepSeconds * 1000;
         }
     }
-    int getSleepRequest() { 
+    float getSleepRequest() { 
         if (countSeen() == modules.size() && (millis() - lastReportMs) > serverSleepLinger * 1000) {
-            int sleepSec = (nextSleepTimeMs - millis()) / 1000;
+            float sleepSec = (nextSleepTimeMs - millis()) / 1000.0;
             if (sleepSec > serverSleepSeconds)
                 sleepSec = 0;
-            printf("All %d modules accounted for, OK to sleep %d sec\n", (int)modules.size(), sleepSec);
+            //printf("All %d modules accounted for, OK to sleep %d sec\n", (int)modules.size(), sleepSec);
             return sleepSec;  
         } 
         return -1;

@@ -429,8 +429,11 @@ SchemaParser::RegisterClass SensorVariable::reg([](const string &s)->Sensor * {
 class RemoteSensorServer : public RemoteSensorProtocol { 
     ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true);
     vector<RemoteSensorModule *> modules;
-    uint32_t lastReportMs = 0, nextSleepTimeMs = 0; // todo avoid rollover by tracking start of sleep period, not end of sleep period
-    //SPIFFSVariable<int> bootStartTimeMs = SPIFFSVariable<int>("/RemoteSensorSever.bootStartTimeMs", 0);
+    SPIFFSVariable<vector<string>> spiffResultLog = SPIFFSVariable<vector<string>>("/RemoteSensorSever.Log", {});
+    
+    uint32_t lastReportMs = 0, nextSleepTimeMs = 0; 
+    // time remaining in sleep after being interrupted by pauseSleep();
+    SPIFFSVariable<int> spiffsResumeSleepMs = SPIFFSVariable<int>("/RemoteSensorSever.spiffsResumeSleepMs", 0);
 public: 
     int countSeen() { 
         int rval = 0;
@@ -444,7 +447,38 @@ public:
     }
     int serverSleepSeconds = 90;
     int serverSleepLinger = 45;
-    RemoteSensorServer(vector<RemoteSensorModule *> m) : modules(m) {}    
+    RemoteSensorServer(vector<RemoteSensorModule *> m) : modules(m) {
+        // BAD hack to resume values after deep sleep - replay log of last received valid data lines
+        vector<string> v = spiffResultLog;
+        for(auto s : v) {
+            std::map<string, string> in = parseLine(s);
+            for(auto p : modules) { 
+                if (p->mac == in[specialWords.MAC]) {
+                    string hash = p->makeHash();
+                    if (in[specialWords.SCHASH] == hash) { 
+                        p->parseAllResults(s);
+                    }
+                }
+            }
+        }
+        if (spiffsResumeSleepMs > 0) {
+            for(auto p : modules) 
+                p->seen = true;
+            nextSleepTimeMs = millis() + spiffsResumeSleepMs;
+            spiffsResumeSleepMs = 0;
+        }
+    }    
+    void prepareSleep(int ms) {
+        int sleepLeftMs = ((int)nextSleepTimeMs) - millis() - ms;
+        if (sleepLeftMs <= 10) { 
+            // before or close to our expected wake time, don't post a resumed sleep
+            for(auto p : modules) p->seen = false;
+            spiffsResumeSleepMs = 0;
+        } else { 
+            // resume this planned wait after this coming short sleep
+            spiffsResumeSleepMs = sleepLeftMs;
+        }
+    }
     void onReceive(const string &s) {
         if (s.find(specialWords.ACK) == 0) 
             return;
@@ -453,7 +487,7 @@ public:
         incomingMac = in[specialWords.MAC];
         incomingHash = in[specialWords.SCHASH];
         if (in.find(specialWords.SERVER) != in.end()) return;
-        printf("%09.4f server <<<< %s\n", millis() / 1000.0, s.c_str());
+        printf("%09.3f server <<<< %s\n", millis() / 1000.0, s.c_str());
 
         bool packetHandled = false;
         for(auto p : modules) { 
@@ -484,6 +518,9 @@ public:
                     }
                 }
                 if (hash == incomingHash) {
+                    if (nextSleepTimeMs - millis() < 10000 || nextSleepTimeMs - millis() > serverSleepSeconds * 1000) {
+                        for(auto p : modules) p->seen = false;
+                    } 
                     if (countSeen() == 0) {
                         nextSleepTimeMs = millis() + serverSleepSeconds * 1000;
                     } 
@@ -492,10 +529,16 @@ public:
                     p->parseAllResults(s);
                     int moduleSleepSec = (nextSleepTimeMs - millis()) / 1000;
                     if (moduleSleepSec > serverSleepSeconds)
-                        moduleSleepSec = 5;
+                        moduleSleepSec = serverSleepSeconds;;
                     string out = "SERVER=1 MAC=" + p->mac + " SCHASH=" + hash + " SLEEP=" 
                         + sfmt("%d ", moduleSleepSec) + p->makeAllSetValues();
                     write(out);
+                    // HACK - keep rolling log of good data lines to replay after a deep sleep
+                    vector<string> log = spiffResultLog;
+                    log.push_back(s);
+                    if (log.size() > modules.size() * 3)
+                        log.erase(log.begin());
+                    spiffResultLog = log;
                 } else {
                     printf("HASH: %s != %s\n", incomingHash.c_str(), hash.c_str());
                 }
@@ -508,6 +551,7 @@ public:
                     p->mac = incomingMac;
                     string schema = p->makeAllSchema();
                     printf("Auto assigning incoming mac %s to sensor %s\n", p->mac.c_str(), schema.c_str());
+                    onReceive(s);
                     break;
                 }
             }
@@ -515,7 +559,7 @@ public:
     }
 
     void write(const string &s) { 
-        printf("%09.4f server >>>> %s\n", millis() / 1000.0, s.c_str());
+        printf("%09.3f server >>>> %s\n", millis() / 1000.0, s.c_str());
         fakeEspNow.write(s);
     }
 
@@ -546,9 +590,6 @@ public:
         } 
         return -1;
     }
-    void prepareSleep(float sec) { 
-        for(auto p : modules) p->seen = false;
-    }
 };
 
 class RemoteSensorClient : public RemoteSensorProtocol { 
@@ -563,8 +604,7 @@ public:
     bool channelHop = false;
     void csimOverrideMac(const string &s) { 
         mac = s;
-        string sch = *lastSchema;
-        init(sch);
+        init();
         deepSleep = false;
     } 
     Sensor *findByName(const char *n) { 
@@ -585,16 +625,16 @@ public:
         sleepRemainingMs = new SPIFFSVariable<int>(("/sensorNetwork_sleepRemaining_" + mac).c_str(), 0);
         if (schema != "")
             *lastSchema = schema;
-        array = new RemoteSensorModule(mac.c_str(), schema.c_str());
+        string s = *lastSchema;
+        array = new RemoteSensorModule(mac.c_str(), s.c_str());
         array->beginClient();
-        lastReceive = millis();
         espNowMux.defaultChannel = *lastChannel; 
-        if (*sleepRemainingMs > 0) { 
+        if (*sleepRemainingMs > 0) { // look if setPartialDeepSleep() was called, resume sleeping
             inhibitStartMs = millis();
             inhibitMs = (int)*sleepRemainingMs;
             *sleepRemainingMs = 0;
         } else { 
-            inhibitMs = inhibitStartMs = 0;
+            inhibitMs = inhibitStartMs = 0; // otherwise start cycle right now
         }
         lastReceive = millis();
     }
@@ -627,7 +667,7 @@ public:
                 else if (name == "SLEEP") sscanf(val.c_str(), "%d", &sleepTime);
             }
         }
-        printf("%09.4f client <<<< %s\n", millis() / 1000.0, s.c_str());
+        printf("%09.3f client <<<< %s\n", millis() / 1000.0, s.c_str());
         if (updatingSchema) { 
             printf("Got new schema: %s\n", newSchema.c_str());
             init(newSchema);
@@ -640,7 +680,7 @@ public:
         // TODO:  Write schema and shit to SPIFF
         if (sleepTime > 0) { 
             if (deepSleep) { 
-                printf("%09.4f: Sleeping %d seconds...\n", millis() / 1000.0, sleepTime);
+                printf("%09.3f: Sleeping %d seconds...\n", millis() / 1000.0, sleepTime);
                 WiFi.disconnect(true);  // Disconnect from the network
                 WiFi.mode(WIFI_OFF);    // Switch WiFi off
                 int rc = esp_sleep_enable_timer_wakeup(1000000LL * sleepTime);
@@ -656,7 +696,7 @@ public:
         }
     }
     void write(const string &s) { 
-        printf("%09.4f client >>>> %s\n", millis() / 1000.0, s.c_str());
+        printf("%09.3f client >>>> %s\n", millis() / 1000.0, s.c_str());
         fakeEspNow.write(s);
     }
     void run() {

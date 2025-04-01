@@ -91,7 +91,7 @@ public:
 	int argc; 
 	char **argv;
 	uint64_t bootTimeUsec = 0;
-	double seconds = 0;
+	double seconds = -1;
 	int resetReason = 0;
 	vector<ESP32sim_Module *> modules;
 	struct TimerInfo { 
@@ -546,9 +546,12 @@ typedef std::function<void(uint64_t usec)> deepSleepHookT;
 vector<deepSleepHookT> deepSleepHooks;
 void onDeepSleep(deepSleepHookT func) { deepSleepHooks.push_back(func); }
 void esp_deep_sleep_start() {
-	double newRunSec = esp32sim.seconds - (sleep_timer + _micros) / 1000000;
-	if (newRunSec < 0) 
-		ESP32sim_exit();
+	double newRunSec = -1;
+	if (esp32sim.seconds >= 0) {
+		newRunSec = esp32sim.seconds - (sleep_timer + _micros) / 1000000;
+		if (newRunSec < 0) 
+			ESP32sim_exit();
+	}
 
 	for (auto i : deepSleepHooks) i(sleep_timer);
 	char *argv[128];

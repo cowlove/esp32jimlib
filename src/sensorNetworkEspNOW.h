@@ -467,15 +467,16 @@ public:
             nextSleepTimeMs = millis() + spiffsResumeSleepMs;
             spiffsResumeSleepMs = 0;
         }
+        lastReportMs = 0;
     }    
     void prepareSleep(int ms) {
         int sleepLeftMs = ((int)nextSleepTimeMs) - millis() - ms;
-        if (sleepLeftMs <= 10) { 
-            // before or close to our expected wake time, don't post a resumed sleep
+        if (sleepLeftMs < 10 * 1000) { 
+            // close to, or after our expected wake time, don't resumed the period
             for(auto p : modules) p->seen = false;
             spiffsResumeSleepMs = 0;
         } else { 
-            // resume this planned wait after this coming short sleep
+            // resume this planned wait period after this coming short sleep
             spiffsResumeSleepMs = sleepLeftMs;
         }
     }

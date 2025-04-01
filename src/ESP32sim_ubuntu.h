@@ -602,7 +602,7 @@ struct WiFiServer {
 class HTTPClient { 
 	string header1, header2, response, url;
 	WiFiClient wc;
-	public:
+public:
     int begin(const char *url) { this->url = url; return 0; }
 	int begin(WiFiClientSecure, const char *) { return 0; }
 	String getString() { return String(response.c_str()); }
@@ -618,7 +618,6 @@ class HTTPClient {
 		//printf("GET() read %d bytes from cmd '%s'\n", n, cmd.c_str());
 		//printf("DATA: %s\n", wc.buffer.c_str());
 		return 200;
-	
 	}
 	int getSize() { return wc.buffer.length(); }
 	WiFiClient *getStreamPtr() { return &wc; } 
@@ -626,17 +625,45 @@ class HTTPClient {
 	void end() {}
 	void addHeader(const char *h1, const char *h2) { header1 = h1; header2 = h2; }
 	int POST(const char *postData) {
+		// return csim_findHook()
 		string cmd = "curl --silent -X POST -H '" + header1 + ": " + header2 + "' -d '" +
 			postData + "' " + url;
 			int numOfCPU;
 		FILE *fp = popen(cmd.c_str(), "r");
-		char buf[4096];
-		fgets(buf, sizeof(buf), fp);
-		response.assign(buf, sizeof(buf));
+		int bufsz = 64 * 1024;
+		char *buf = (char *)malloc(bufsz);
+		fgets(buf, bufsz, fp);
+		response = buf;
 		fclose(fp);
+		free(buf);
+		return 200;
+	}
+	// csim hooks
+private:
+	typedef std::function<int(const char *url, const char *hdr, const char *data, string &result)> postHookT;
+	struct postHookInfo {
+		string url;
+		bool isPost; // otherwise its a get
+		postHookT func;
+	};
+	static vector<postHookInfo> csim_hooks;
+public:
+	static void csim_onPOST(const string &url, postHookT func) {
+		csim_hooks.push_back({url, true, func});
+	}
+	static void csim_onGET(const string &url, postHookT func) {
+		csim_hooks.push_back({url, false, func});
+	}
+	static int csim_defaultOnPOST(const char *url, const char *hdr, const char *data, string &result) {
+		return 200;
+	}
+	static int csim_defaultOnGET(const char *url, const char *hdr, const char *data, string &result) {
 		return 200;
 	}
 };
+vector<HTTPClient::postHookInfo> HTTPClient::csim_hooks = {
+	{"*", true, HTTPClient::csim_defaultOnPOST },
+	{"*", false, HTTPClient::csim_defaultOnGET }};
 
 #define PROGMEM 
 

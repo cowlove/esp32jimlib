@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <functional>
 #include <regex>
+#include <unistd.h>
 
 using std::map;
 using std::ios_base;
@@ -87,6 +88,11 @@ static uint64_t _microsMax = 0xffffffff;
 
 class ESP32sim {
 public:
+	int argc; 
+	char **argv;
+	uint64_t bootTimeUsec = 0;
+	double seconds = 0;
+	int resetReason = 0;
 	vector<ESP32sim_Module *> modules;
 	struct TimerInfo { 
 		uint64_t last;
@@ -142,7 +148,7 @@ void esp_task_wdt_deinit() {}
 void esp_task_wdt_reset() {}
 esp_err_t esp_task_wdt_add(void *) { return 0; }
 esp_err_t esp_task_wdt_delete(const void *) { return 0; }
-int rtc_get_reset_reason(int) { return 1; } 
+int rtc_get_reset_reason(int) { return esp32sim.resetReason; } 
 
 #define ADC1_CHANNEL_1 0
 #define ADC1_CHANNEL_2 0
@@ -534,7 +540,31 @@ void gpio_hold_dis(int)  {}
 void gpio_hold_en(int)  {}
 uint64_t sleep_timer = 0;
 int esp_sleep_enable_timer_wakeup(uint64_t t) { sleep_timer = t; return 0; }
-void esp_deep_sleep_start() { ESP32sim_exit(); }
+void esp_deep_sleep_start() {
+	double newRunSec = esp32sim.seconds - (sleep_timer + _micros) / 1000000;
+	if (newRunSec < 0) 
+		ESP32sim_exit();
+
+	char *argv[128];
+	int argc = 0; 
+	for(char *const *p = esp32sim.argv; *p != NULL; p++) {
+		if (strcmp(*p, "--boot-time") == 0) p++;
+		else if (strcmp(*p, "--seconds") == 0) p++;
+		else if (strcmp(*p, "--reset-reason") == 0) p++;
+		else argv[argc++] = *p;
+	}
+	char bootTimeBuf[32], secondsBuf[32];
+	snprintf(bootTimeBuf, sizeof(bootTimeBuf), "%ld", esp32sim.bootTimeUsec + sleep_timer + _micros);
+	argv[argc++] = "--boot-time";
+	argv[argc++] = bootTimeBuf; 
+	snprintf(secondsBuf, sizeof(secondsBuf), "%f", newRunSec);
+	argv[argc++] = "--seconds";
+	argv[argc++] = secondsBuf; 
+	argv[argc++] = "--reset-reason";
+	argv[argc++] = "5";
+	argv[argc++] = NULL; 
+	execv("./csim", argv); 
+}
 void esp_light_sleep_start() { delayMicroseconds(sleep_timer); } 
 
 
@@ -1195,15 +1225,24 @@ struct DHT {
 
 
 void ESP32sim::main(int argc, char **argv) {
-	float seconds = 0;
+	this->argc = argc;
+	this->argv = argv;
 	Serial.toConsole = true;
+	if (1) { 
+		printf("args: ");
+			for(char **a = argv; a < argv+argc; a++) 
+				printf("%s ", *a);
+		printf("\n");
+	}
 	for(char **a = argv + 1; a < argv+argc; a++) {
 		if (strcmp(*a, "--serial") == 0) {
 			printf("--serial is depricated, use --serialConsole\n");
 			::exit(-1);
 		}
 		else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
-		else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%f", &seconds); 
+		else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%lf", &seconds); 
+		else if (strcmp(*a, "--boot-time") == 0) sscanf(*(++a), "%ld", &bootTimeUsec); 
+		else if (strcmp(*a, "--reset-reason") == 0) sscanf(*(++a), "%d", &resetReason); 
 		else if (strcmp(*a, "--mac") == 0) { 
 			sscanf(*(++a), "%lx", &csim_mac);
 		} else if (strcmp(*a, "--espnowPipe") == 0) { 

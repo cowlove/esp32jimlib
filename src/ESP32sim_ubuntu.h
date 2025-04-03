@@ -695,7 +695,7 @@ public:
 		FILE *fp = popen(cmd.c_str(), "r");
 		int bufsz = 64 * 1024;
 		char *buf = (char *)malloc(bufsz);
-		fgets(buf, bufsz, fp);
+		result = fgets(buf, bufsz, fp);
 		result = buf;
 		fclose(fp);
 		free(buf);
@@ -1311,7 +1311,7 @@ void ESP32sim::exit() {
 }
 void ESP32sim::delayMicroseconds(long long us) { 
 	do {
-		int step = min(10000LL, us);
+		int step = min(100000LL, us);
 		_micros += step;
 		for(auto it : modules) {
 			it->loop();

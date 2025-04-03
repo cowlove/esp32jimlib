@@ -433,7 +433,7 @@ class RemoteSensorServer : public RemoteSensorProtocol {
     
     uint32_t lastReportMs = 0, nextSleepTimeMs = 0; 
     // time remaining in sleep after being interrupted by pauseSleep();
-    SPIFFSVariable<int> spiffsResumeSleepMs = SPIFFSVariable<int>("/RemoteSensorSever.spiffsResumeSleepMs", 0);
+    SPIFFSVariable<int> spiffsResumeSleepMs = SPIFFSVariable<int>("/RemSenSrv_srs", 0);
 public: 
     int countSeen() { 
         int rval = 0;
@@ -446,7 +446,7 @@ public:
         return (millis() - lastReportMs) / 1000.0;
     }
     int serverSleepSeconds = 90;
-    int serverSleepLinger = 45;
+    int serverSleepLinger = 10;
     RemoteSensorServer(vector<RemoteSensorModule *> m) : modules(m) {
         // BAD hack to resume values after deep sleep - replay log of last received valid data lines
         vector<string> v = spiffResultLog;
@@ -579,13 +579,16 @@ public:
         if (countSeen() > 0 && (nextSleepTimeMs - millis()) / 1000 > serverSleepSeconds) {
             // missing some sensors but the entire sleep period has elapsed?  Just reset to next sleep Period 
             nextSleepTimeMs = millis() + serverSleepSeconds * 1000;
+            lastReportMs = millis();                
         }
     }
     float getSleepRequest() { 
         if (countSeen() == modules.size() && (millis() - lastReportMs) > serverSleepLinger * 1000) {
             float sleepSec = (nextSleepTimeMs - millis()) / 1000.0;
             if (sleepSec > serverSleepSeconds)
-                sleepSec = 0;
+                sleepSec = -1;
+            if (sleepSec < 20)
+                sleepSec = -1;
             //printf("All %d modules accounted for, OK to sleep %d sec\n", (int)modules.size(), sleepSec);
             return sleepSec;  
         } 
@@ -621,9 +624,9 @@ public:
             delete lastSchema;
             delete sleepRemainingMs;
         }
-        lastChannel = new SPIFFSVariable<int>(("/sensorNetwork_lastChannel_" + mac).c_str(), 1);
-        lastSchema = new SPIFFSVariable<string>(("/sensorNetwork_lastSchema_" + mac).c_str(), "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
-        sleepRemainingMs = new SPIFFSVariable<int>(("/sensorNetwork_sleepRemaining_" + mac).c_str(), 0);
+        lastChannel = new SPIFFSVariable<int>(("/sn_lc_" + mac).c_str(), 1);
+        lastSchema = new SPIFFSVariable<string>(("/sn_ls_" + mac).c_str(), "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
+        sleepRemainingMs = new SPIFFSVariable<int>(("/sn_sr_" + mac).c_str(), 0);
         if (schema != "")
             *lastSchema = schema;
         string s = *lastSchema;

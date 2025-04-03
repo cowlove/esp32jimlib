@@ -306,6 +306,7 @@ void SPIFFSVariableESP32Base::writeAsString(const string &s) {
 		int r = file.write((const uint8_t *)s.c_str(), s.length());
 		file.flush();
 		file.close();
+		successfullyWritten = true;
 		//printf("SPIFFSVariableESP32 write returned %d file %s %s\n", r, filename.c_str(), s.c_str());
 	} else if(initialized) { 
 		printf("SPIFFSVariableESP32 error writing file %s, formatting SPIFFS\n", filename.c_str());

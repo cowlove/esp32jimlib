@@ -597,6 +597,8 @@ protected:
 	void writeAsString(const string &s);
 	string readAsString();	
 	static bool initialized;
+protected:
+	bool successfullyWritten = false;
 public:
 	static void begin();
 };
@@ -611,9 +613,11 @@ public:
 		defaultStringValue = toString(def);
 	}
 	T read() {
-		val = def;
-		string s = readAsString();
-		fromString(s, val);
+		if (!successfullyWritten) { 
+			val = def;
+			string s = readAsString();
+			fromString(s, val);
+		}
 		return val;
 	}
 	operator const T() { return read(); } 
@@ -650,50 +654,55 @@ class JimWiFi {
 	// TODO: move this into JimWifi
 	SPIFFSVariable<int> lastAP = SPIFFSVariable<int>("/lastap", -1);
 public:
+	bool waitConnected(int ms, int bestMatch = -1) { 
+		uint32_t startMs = millis();
+		while(millis() - startMs < ms) { 
+			if (WiFi.status() == WL_CONNECTED) {
+				Serial.printf("Connected\n");
+				if (bestMatch >= 0) lastAP = bestMatch;
+				return true;
+			}
+			wdtReset();
+			delay(100);
+		}
+		return false;
+	}
 	void autoConnect() {
 		if (!enabled) 
 			return;
 
-			struct {
-				const char *name;
-				const char *pass;
-			} aps[] = {	{"Ping-582B", ""}, 
-						//{"ChloeNet", "niftyprairie7"},
-						//{"Flora2", "Maynards."},
-						{"MOF-Guest", ""},
-						//{"XXX Bear Air Sport Aviation", "niftyprairie7"}, 
-						{"ClemmyNet","clementine is a cat"},
-						{"ChloeNet4", "niftyprairie7"},
-						{"Tip of the Spear", "51a52b5354"},  
-						{"Team America", "51a52b5354"},  
-						{"Station 54", "Local1747"},
-						{"TUK-FIRE", "FD priv n3t 20 q4"} };
+		struct {
+			const char *name;
+			const char *pass;
+			const char *mqtt;
+		} aps[] = {	{"Ping-582B", "", ""}, 
+					{"ChloeNet", "niftyprairie7", ""},
+					{"MOF-Guest", "", ""},
+					{"ClemmyNet","clementine is a cat", ""},
+					{"ChloeNet4", "niftyprairie7", ""},
+					{"Station 54", "Local1747", ""},
+				 };
 
 		//WiFi.disconnect(true);
 		//WiFi.mode(WIFI_STA);
-		WiFi.setSleep(false);
+		//WiFi.setSleep(false);
 		//delay(100);
 
 		int bestMatch = lastAP;
 		if (bestMatch >= 0 && bestMatch < (sizeof(aps)/sizeof(aps[0]))) { 
 			Serial.printf("Trying cached WiFi AP '%s'...\n", aps[bestMatch].name);
 			WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
-			for(int d = 0; d < 80; d++) { 
-				if (WiFi.status() == WL_CONNECTED) {
-					Serial.printf("Connected\n");
-					firstRun = false;
-					return;
-				}
-				wdtReset();
-				delay(100);
-			}
+			if (waitConnected(2000)) return;
+			WiFi.disconnect();
+			WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+			if (waitConnected(2000)) return;
 		}
 		bestMatch = -1;
 
 		Serial.println("Scanning...");
 		WiFi.disconnect(true);
 		//WiFi.mode(WIFI_STA);
-		WiFi.setSleep(false);
+		//WiFi.setSleep(false);
 		//delay(1000);
 		wdtReset();
 		int n = WiFi.scanNetworks();
@@ -722,21 +731,12 @@ public:
 		}
 		WiFi.scanDelete();
 		Serial.printf("Using WiFi AP '%s'...\n", aps[bestMatch].name);
-		//WiFi.disconnect(true);
-		//WiFi.mode(WIFI_STA);
-		//WiFi.setSleep(false);
-		delay(100);
+		WiFi.disconnect();
 		WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
-		for(int d = 0; d < 200; d++) { 
-			if (WiFi.status() == WL_CONNECTED) {
-				Serial.printf("Connected\n");
-				lastAP = bestMatch;
-				return;
-			}
-			delay(100);
-			wdtReset();
-		}
-		firstRun = false;
+		if (waitConnected(2000, bestMatch)) return;
+		WiFi.disconnect();
+		WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+		waitConnected(12000, bestMatch); 
 	}
 public:
     bool updateInProgress = false;
@@ -1248,7 +1248,7 @@ public:
 
 	bool cliEcho = true;
 	JimWiFi jw;
-	MQTTClient mqtt = MQTTClient("192.168.68.138", basename_strip_ext(__BASE_FILE__).c_str());
+	MQTTClient mqtt = MQTTClient("192.168.68.73", basename_strip_ext(__BASE_FILE__).c_str());
 	void run() { 
 		if (beginRan == false)
 			begin();
@@ -1276,11 +1276,12 @@ public:
 		SPIFFSVariableESP32Base::begin();
 
 		Serial.begin(115200);
+		LP();
 		Serial.printf("\n\n\n%s git:" GIT_VERSION " mac:%s time:%05.3fs built:" __DATE__ " " __TIME__ " \n", 
 			basename_strip_ext(__BASE_FILE__).c_str(), getMacAddress().c_str(), millis() / 1000.0);
 		getLedPin();
-
-		led.setPercent(30);
+		LP();
+		//led.setPercent(30);
 		jw.onConnect([this](){
 			led.setPattern(500, 2);
 			if (WiFi.SSID() == "ClemmyNet" || WiFi.SSID() == "FakeWiFi") {

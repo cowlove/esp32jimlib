@@ -568,13 +568,17 @@ const String &getMacAddress();
 
 using std::string;
 template<class T> bool fromString(const string &s, T&v);
-template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d", &v) == 1; }
-template<> inline bool fromString(const string &s, float &v) { return sscanf(s.c_str(), "%f", &v) == 1; }
+template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d ", &v) == 1; }
+template<> inline bool fromString(const string &s, uint64_t &v) { return sscanf(s.c_str(), "%lu ", &v) == 1; }
+template<> inline bool fromString(const string &s, int64_t &v) { return sscanf(s.c_str(), "%ld ", &v) == 1; }
+template<> inline bool fromString(const string &s, float &v) { return sscanf(s.c_str(), "%f ", &v) == 1; }
 template<> inline bool fromString(const string &s, string &v) { v = s; return true; }
 
 template<class T> string toString(const T&v);
-template<> inline string toString(const int &v) { return sfmt("%d", v); }
-template<> inline string toString(const float &v) { return sfmt("%f", v); }
+template<> inline string toString(const uint64_t &v) { return sfmt("%lu ", v); }
+template<> inline string toString(const int64_t &v) { return sfmt("%ld ", v); }
+template<> inline string toString(const int &v) { return sfmt("%d ", v); }
+template<> inline string toString(const float &v) { return sfmt("%f ", v); }
 template<> inline string toString(const string &s) { return s; }
 
 #define LP() printf("%09.3f %s:%d\n", millis() / 1000.0, basename(__FILE__), __LINE__)
@@ -600,6 +604,7 @@ protected:
 protected:
 	bool successfullyWritten = false;
 public:
+	bool debug = false;
 	static void begin();
 };
 
@@ -613,21 +618,23 @@ public:
 		defaultStringValue = toString(def);
 	}
 	T read() {
-		if (!successfullyWritten) { 
-			val = def;
-			string s = readAsString();
-			fromString(s, val);
+		if (!initialized && debug) {
+			printf("WARNING: early read from '%s'\n", filename.c_str());
 		}
+		val = def;
+		string s = readAsString();
+		fromString(s, val);
 		return val;
 	}
 	operator const T() { return read(); } 
 	SPIFFSVariableESP32 & operator=(const T&v) { write(v); return *this; } 
 	void write(const T &v) {
-		if (val != v) {
-			val = v;
-			string s = toString(val);
-			this->writeAsString(s);
+		if (!initialized) {
+			printf("WARNING: early write to '%s'\n", filename.c_str());
 		}
+		val = v;
+		string s = toString(val);
+		this->writeAsString(s);
 	}
 };
 
@@ -646,6 +653,7 @@ struct SPIFFSVariableFake {
 #define SPIFFSVariable SPIFFSVariableFake
 #endif
 
+
 class JimWiFi { 
 	EggTimer report = EggTimer(1000);
 	bool firstRun = true, firstConnect = true;
@@ -654,7 +662,20 @@ class JimWiFi {
 	// TODO: move this into JimWifi
 	SPIFFSVariable<int> lastAP = SPIFFSVariable<int>("/lastap", -1);
 public:
-	bool waitConnected(int ms, int bestMatch = -1) { 
+	struct ApInfo {
+		const char *name;
+		const char *pass;
+		const char *mqtt;
+	};
+	std::vector<ApInfo> aps = {	{"Ping-582B", "", ""}, 
+			{"ChloeNet", "niftyprairie7", ""},
+			{"MOF-Guest", "", ""},
+			{"ClemmyNet","clementine is a cat", "192.168.68.138"},
+			{"ChloeNet4", "niftyprairie7", ""},
+			{"Station 54", "Local1747", ""}, 
+		};
+
+bool waitConnected(int ms, int bestMatch = -1) { 
 		uint32_t startMs = millis();
 		while(millis() - startMs < ms) { 
 			if (WiFi.status() == WL_CONNECTED) {
@@ -667,21 +688,13 @@ public:
 		}
 		return false;
 	}
+	const char *getMqttServer() { 
+		if (lastAP >= 0) return aps[lastAP].mqtt;
+		return NULL;
+	}
 	void autoConnect() {
 		if (!enabled) 
 			return;
-
-		struct {
-			const char *name;
-			const char *pass;
-			const char *mqtt;
-		} aps[] = {	{"Ping-582B", "", ""}, 
-					{"ChloeNet", "niftyprairie7", ""},
-					{"MOF-Guest", "", ""},
-					{"ClemmyNet","clementine is a cat", ""},
-					{"ChloeNet4", "niftyprairie7", ""},
-					{"Station 54", "Local1747", ""},
-				 };
 
 		//WiFi.disconnect(true);
 		//WiFi.mode(WIFI_STA);
@@ -689,7 +702,7 @@ public:
 		//delay(100);
 
 		int bestMatch = lastAP;
-		if (bestMatch >= 0 && bestMatch < (sizeof(aps)/sizeof(aps[0]))) { 
+		if (bestMatch >= 0 && bestMatch < aps.size()) { 
 			Serial.printf("Trying cached WiFi AP '%s'...\n", aps[bestMatch].name);
 			WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
 			if (waitConnected(2000)) return;
@@ -717,7 +730,7 @@ public:
 			// Print SSID and RSSI for each network found
 			// TODO handle the trailing space in some AP names 
 				Serial.printf("%3d: %s (%d)\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
-				for (int j = 0; j < sizeof(aps)/sizeof(aps[0]); j++) { 				
+				for (int j = 0; j < aps.size(); j++) { 
 					if (strcmp(WiFi.SSID(i).c_str(), aps[j].name) == 0) { 
 						if (bestMatch == -1 || j < bestMatch) {
 							bestMatch = j;
@@ -980,7 +993,8 @@ public:
     String topicPrefix, server;
 	bool active;
 	void setCallback(std::function<void(String,String)> cb) { userCallback = cb; }
-	MQTTClient(const char *s, const char *t, std::function<void(String,String)> cb = NULL, bool a = true);
+	void begin(const char *s, const char *t, std::function<void(String,String)> cb = NULL, bool a = true);
+	MQTTClient();
 	void publish(const char *suffix, const char *m);
 	void publish(const char *suffix, const String &m);
 	void pub(const char *m);
@@ -1214,7 +1228,7 @@ public:
 	bool debug = false;
 	CommandLineInterface cli;
 	CliVariable<int> logLevel;
-	QuickRebootCounter quickRebootCounter;
+	//QuickRebootCounter quickRebootCounter;
 public:
 	//PwmChannel led = PwmChannel(getLedPin(), 1024, 10, 2);
 	struct {
@@ -1248,11 +1262,11 @@ public:
 
 	bool cliEcho = true;
 	JimWiFi jw;
-	MQTTClient mqtt = MQTTClient("192.168.68.73", basename_strip_ext(__BASE_FILE__).c_str());
+	MQTTClient mqtt;
 	void run() { 
 		if (beginRan == false)
 			begin();
-		quickRebootCounter.run();
+		//quickRebootCounter.run();
 		lastRun = thisRun;
 		thisRun = micros();
 		forceTicksNow = false;
@@ -1284,6 +1298,10 @@ public:
 		//led.setPercent(30);
 		jw.onConnect([this](){
 			led.setPattern(500, 2);
+			const char *mqttServer = jw.getMqttServer();
+			if (mqttServer != NULL && strlen(mqttServer)) {
+				 mqtt.begin(mqttServer, basename_strip_ext(__BASE_FILE__).c_str());
+			}
 			if (WiFi.SSID() == "ClemmyNet" || WiFi.SSID() == "FakeWiFi") {
 				jw.debug = mqtt.active = true;  
 				out("JStuff: forcing debug and mqtt.active due to WiFi network");

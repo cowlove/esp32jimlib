@@ -227,7 +227,9 @@ struct FakeESP {
 		struct mallinfo2 mi = mallinfo2();
 		return 16 * 1024 * 1024 - mi.uordblks;
 	}
-	void restart() {}
+	uint32_t minFreeHeap = 0xffffffff;
+	uint32_t getMinFreeHeap() { return minFreeHeap = min(minFreeHeap, getFreeHeap()); } 
+	void restart() { ESP32sim_exit(); }
 	uint32_t getChipId() { return 0xdeadbeef; }
 } ESP;
 
@@ -1318,6 +1320,8 @@ void ESP32sim::delayMicroseconds(long long us) {
 		}
 		intMan.run();
 		us -= step;
+		if (esp32sim.seconds > 0 && micros() / 1000000.0 > esp32sim.seconds)
+			ESP32sim_exit();
 	} while(us > 0);
 }
 

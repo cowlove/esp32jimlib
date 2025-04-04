@@ -310,16 +310,16 @@ public:
     string makeReport() override {
         float t = NAN, h = NAN;
         for(int r = 0; r < 15; r++) {
-            delay(350); // no idea why, seems to persist even after microcontroller has booted and stabilized
-            h = dht.readHumidity(true);
+            while(millis() < 750) delay(10); // HACK - DHT has trouble if read before power is stable for about 650ms
+            h = dht.readHumidity();
             t = dht.readTemperature();
             if (!isnan(t) && !isnan(h)) {
                 break;
             } 
             retries++;
-            printf("%09.3f DHT read     ure t:%.2f h:%.2f, retry #%d, total retries %d\n", millis()/1000.0, t, h, r, retries);
+            printf("%09.3f DHT read failure t:%.2f h:%.2f, retry #%d, total retries %d\n", millis()/1000.0, t, h, r, retries);
             wdtReset();
-            //delay(300);
+            delay(200);
         } 
         return sfmt("%.2f,%.2f,%d", t, h, retries);
     }
@@ -453,6 +453,8 @@ public:
         for(auto s : v) {
             std::map<string, string> in = parseLine(s);
             for(auto p : modules) { 
+                if (p->mac == "auto" && in.find(specialWords.MAC) != in.end())
+                    p->mac = in[specialWords.MAC];
                 if (p->mac == in[specialWords.MAC]) {
                     string hash = p->makeHash();
                     if (in[specialWords.SCHASH] == hash) { 

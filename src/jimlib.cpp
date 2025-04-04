@@ -219,11 +219,17 @@ char _GIT_VERSION[] = GIT_VERSION;
 char _GIT_VERSION[] = "undefined";
 #endif
 
-MQTTClient::MQTTClient(const char *s, const char *t, 
-	std::function<void(String,String)> cb/* = NULL*/, bool a/*= true*/) : 
-active(a), server(s), topicPrefix(t), userCallback(cb) {
+MQTTClient::MQTTClient() {
 	client = new PubSubClient(espClient);
 }
+void MQTTClient::begin(	const char *s, const char *t, 
+	std::function<void(String,String)> cb/* = NULL*/, bool a/*= true*/) {
+	active = a;
+	server = s; 
+	topicPrefix = t;
+	userCallback = cb;
+}
+
 void MQTTClient::callBack(char *topic, byte *p, unsigned int l) {
 	if (userCallback != NULL) { 
 		userCallback(String(topic), buf2str(p, l));
@@ -245,7 +251,7 @@ void MQTTClient::reconnect() {
 	if (active == false || WiFi.status() != WL_CONNECTED || client->connected()) 
 		return;
 	client->setServer(server.c_str(), 1883);
-	Serial.println("MQTT connecting...");
+	Serial.printf("MQTT connecting to server '%s'...\n", server.c_str());
 	if (client->connect((topicPrefix + getMacAddress()).c_str())) {
 		client->subscribe((topicPrefix + "/in").c_str());
 		client->setCallback([this](char* topic, byte* p, unsigned int l) {
@@ -304,10 +310,14 @@ void SPIFFSVariableESP32Base::writeAsString(const string &s) {
 	fs::File file = LittleFS.open(filename.c_str(), "w");
 	if (file) { 
 		int r = file.write((const uint8_t *)s.c_str(), s.length());
+		if (r != s.length()) { 
+			printf("SPIFFSVariableESP32 write fail: returned %d file %s '%s'\n", r, filename.c_str(), s.c_str());
+		}
 		file.flush();
 		file.close();
 		successfullyWritten = true;
-		//printf("SPIFFSVariableESP32 write returned %d file %s %s\n", r, filename.c_str(), s.c_str());
+		if (debug)
+			printf("SPIFFSVariableESP32 write returned %d file %s %s\n", r, filename.c_str(), s.c_str());
 	} else if(initialized) { 
 		printf("SPIFFSVariableESP32 error writing file %s, formatting SPIFFS\n", filename.c_str());
 		LittleFS.format();
@@ -335,12 +345,11 @@ string SPIFFSVariableESP32Base::readAsString() {
 				break;
 			buf[r] = 0;
 			rval += string((char *)buf); 
-			//printf("SPIFFSVariableESP32 read %d bytes from file %s %s\n", r, filename.c_str(), buf);
+			if (debug)
+				printf("SPIFFSVariableESP32 read %d bytes from file %s '%s'\n", r, filename.c_str(), buf);
 		}
 	} else { 
 		printf("Error opening file %s\n", filename.c_str());
-	}
-	if (rval.length() == 0) {
 		writeAsString(defaultStringValue);
 		rval = defaultStringValue;
 	}

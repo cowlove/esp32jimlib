@@ -151,6 +151,7 @@ public:
     }
     string makeAllResults() { 
         string r;
+        r.reserve(256);
         findByName(specialWords.MAC)->result = this->mac;
         findByName(specialWords.SCHASH)->result = makeHash();
         for(auto i : sensors) { 
@@ -715,8 +716,8 @@ public:
                 init();
             }
         } else { 
-            static HzTimer timer(.2, true);
-            if (array != NULL && timer.secTick(.5)) { 
+            static HzTimer timer(.6, true);
+            if (array != NULL && timer.secTick(1.0)) { 
                 string out = array->makeAllResults() + "ENDLINE=1 ";
                 write(out);
             }

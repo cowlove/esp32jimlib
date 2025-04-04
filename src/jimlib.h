@@ -589,6 +589,9 @@ template<> inline bool fromString(const string &s, std::vector<string> &v) {
 
 template<> inline string toString(const std::vector<string> &v) { 
 	string rval;
+	int totalSize = 0;
+	for(auto line : v) totalSize += line.length() + 1;
+	rval.reserve(totalSize);
     for(auto line : v) rval += line + "\n";
     return rval;
 }

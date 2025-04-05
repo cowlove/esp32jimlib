@@ -621,6 +621,10 @@ public:
 		filename = f;
 		defaultStringValue = toString(def);
 	}
+	SPIFFSVariableESP32(const string &f, const T &d) : def(d), val(d) {
+		filename = f;
+		defaultStringValue = toString(def);
+	}
 	T read() {
 		if (!initialized && debug) {
 			printf("WARNING: early read from '%s'\n", filename.c_str());

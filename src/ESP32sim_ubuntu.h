@@ -219,8 +219,8 @@ struct FakeSPIFFS {
 		string fn1 = root + fn;
 		int n = ::remove(fn1.c_str()); 
 	}
-	int usedBytes() { return 0; }
-	int totalBytes() { return 0; }
+	int usedBytes() { return 20 * 1024; }
+	int totalBytes() { return 115 * 1024; }
 } SPIFFS, LittleFS;
 
 struct FakeArduinoOTA {

@@ -180,28 +180,47 @@ public:
 		mkdir("./spiff", 0755);
 		string filename = string("./spiff/") + fn;
 		int mode = O_RDONLY;
+		if (strcmp(m, "a") == 0) mode = O_CREAT | O_APPEND | O_WRONLY;
+		if (strcmp(m, "r") == 0) mode = O_CREAT | O_RDONLY;
 		if (strcmp(m, "w") == 0) mode = O_CREAT | O_TRUNC | O_WRONLY;
+		if (strcmp(m, "r+") == 0) mode = O_CREAT | O_RDWR;
+		if (strcmp(m, "w+") == 0) mode = O_CREAT | O_TRUNC | O_RDWR;
 		fd = open(filename.c_str(), mode, 0644);
 	}
 	bool operator!() { return false; } 
 	operator bool() { return true; } 
 	File openNextFile(void) { return *this; }
-	void close() { if (fd != -1) ::close(fd); }
+	void close() { if (fd != -1) ::close(fd); fd = -1; }
     int print(const char *s) { return ::write(fd, s, strlen(s)); }
 	int printf(const char *, ...) { return 0; } 
 	int write(const char *d, int l) { return ::write(fd, d, l); } 
 	int write(const uint8_t *d, int l) { return ::write(fd, d, l); } 
+	int write(uint8_t c) { return ::write(fd, &c, 1); }
+	int seek(int pos) { return ::lseek(fd, pos, SEEK_SET); } 
+	//int truncate(int pos) { return ::ftruncate(fd, pos); }
 	int flush() { return 0; }	
 	int read(uint8_t *buf, int len) { return ::read(fd, buf, len); }
 	~File() { close(); } 
 };
 };
-using fs::File;
 
+using fs::File;
 struct FakeSPIFFS {
+	const string root = string("./spiff");
 	void begin() {}
 	void format() {}
 	File open(const char *f, const char *m) { return File(f, m); } 
+	void rename(const char *oldname, const char *newname) { 
+		string fn1 = root + oldname;
+		string fn2 = root + newname;
+		int n = ::rename(fn1.c_str(), fn2.c_str()); 
+	}	
+	void remove(const char *fn) { 
+		string fn1 = root + fn;
+		int n = ::remove(fn1.c_str()); 
+	}
+	int usedBytes() { return 0; }
+	int totalBytes() { return 0; }
 } SPIFFS, LittleFS;
 
 struct FakeArduinoOTA {

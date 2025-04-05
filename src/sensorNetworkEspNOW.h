@@ -140,6 +140,7 @@ public:
     Sensor *findByName(const string &s) { return findByName(s.c_str()); }
     string makeAllSchema() { 
         string r;
+        r.reserve(256);
         for(auto i : sensors) { 
             r += i->name + "=" + i->makeSchema() + " ";
         }

@@ -615,6 +615,7 @@ template<class T>
 class SPIFFSVariableESP32 : public SPIFFSVariableESP32Base { 
 	const T def;
 	T val;
+	bool firstRead = true;
 public:
 	SPIFFSVariableESP32(const char *f, const T &d) : def(d), val(d) {
 		filename = f;
@@ -624,9 +625,12 @@ public:
 		if (!initialized && debug) {
 			printf("WARNING: early read from '%s'\n", filename.c_str());
 		}
-		val = def;
-		string s = readAsString();
-		fromString(s, val);
+		if (firstRead) { 
+			val = def;
+			string s = readAsString();
+			fromString(s, val);
+			firstRead = false;
+		}
 		return val;
 	}
 	operator const T() { return read(); } 

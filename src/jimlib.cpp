@@ -6,11 +6,11 @@
 #include <rom/rtc.h>
 #include <HTTPClient.h>
 #include <PubSubClient.h>
-#include <SPIFFS.h>
 #include "Wire.h"
 #include <OneWireNg.h>
 #include <OneWireNg_CurrentPlatform.h>
 
+#include <SPIFFS.h>
 #define LittleFS SPIFFS
 
 #else

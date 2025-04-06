@@ -1330,15 +1330,18 @@ public:
 				mqtt.pub(r.c_str());
 		});
 	}
+	void out(const string &s) { 
+		mqtt.pub(s.c_str());
+		printf("%s", s.c_str());
+		printf("\n");
+		jw.udpDebug(s.c_str());
+	}
 	void out(const char *format, ...) { 
 		va_list args;
 		va_start(args, format);
 		string s = vsfmt(format, args);
 		va_end(args);
-		mqtt.pub(s.c_str());
-		printf("%s", s.c_str());
-		printf("\n");
-		jw.udpDebug(s.c_str());
+		out(s);
 	}
 	void log(int ll, const char *format, ...) { 
 		if (logLevel < ll) 
@@ -1353,8 +1356,7 @@ public:
 	}
 	void log(int l, String s) { log(l, s.c_str()); }
 	void log(int l, std::string s) { log(l, s.c_str()); }
-	void out(String s) { out(s.c_str()); }
-	void out(std::string s) { out(s.c_str()); }
+	void out(String s) { string s2 = s.c_str(); out(s2); }
 };
 
 #define OUT j.out

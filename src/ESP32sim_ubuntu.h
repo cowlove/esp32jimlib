@@ -613,13 +613,21 @@ struct StaticJsonDocument {
 //int deserializeJson(StaticJsonDocument<1024>, String) { return 0; }
 
 struct FakeWiFi {
+	int simulatedFailMinutes = 0;  /* if n > 0 fail for a minute every nth minute */
+
 	int curStatus = WL_DISCONNECTED;
 	int begin(const char *, const char *) { curStatus = WL_CONNECTED; return 0; }
-	int status() { return curStatus; } 
+	int status() {
+		bool disable = simulatedFailMinutes > 0 && 
+			((micros() + esp32sim.bootTimeUsec) / 1000000 / 60) 
+			% simulatedFailMinutes == simulatedFailMinutes - 1; 
+		if (disable) curStatus = WL_DISCONNECTED; 
+		return curStatus; 
+	} 
 	IPAddress localIP() { return IPAddress(); } 
 	void setSleep(bool) {}
 	void mode(int) {}
-	int isConnected() { return 0; }
+	int isConnected() { return status() == WL_CONNECTED; } 
 	int channel() { return 0; }
 	void disconnect(bool) {}
 	void scanDelete() {}
@@ -673,7 +681,7 @@ public:
 	}
 	int getSize() { return wc.buffer.length(); }
 	WiFiClient *getStreamPtr() { return &wc; } 
-	bool connected() { return 1; } 
+	bool connected() { return true; } 
 	void end() {}
 	void addHeader(const char *h1, const char *h2) { header1 = h1; header2 = h2; }
 	int POST(const char *postData) {
@@ -1267,6 +1275,7 @@ void ESP32sim::main(int argc, char **argv) {
 			::exit(-1);
 		}
 		else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
+		else if (strcmp(*a, "--wifi-errors") == 0) sscanf(*(++a), "%d", &WiFi.simulatedFailMinutes); 
 		else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%lf", &seconds); 
 		else if (strcmp(*a, "--boot-time") == 0) sscanf(*(++a), "%ld", &bootTimeUsec); 
 		else if (strcmp(*a, "--show-args") == 0) showargs = 1; 

@@ -243,8 +243,8 @@ typedef int ota_error_t;
 #include <malloc.h>
 struct FakeESP {
 	uint32_t getFreeHeap() { 
-		struct mallinfo2 mi = mallinfo2();
-		return 16 * 1024 * 1024 - mi.uordblks;
+		//struct mallinfo2 mi = mallinfo2();
+		return 16 * 1024 * 1024;// - mi.uordblks;
 	}
 	uint32_t minFreeHeap = 0xffffffff;
 	uint32_t getMinFreeHeap() { return minFreeHeap = min(minFreeHeap, getFreeHeap()); } 

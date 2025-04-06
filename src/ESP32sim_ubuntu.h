@@ -174,11 +174,12 @@ struct Adafruit_NeoPixel {
 namespace fs { 
 class File {
 	int fd = -1;
+	string filename;
 public: 
 	File() {}
 	File(const char *fn, const char *m) {
 		mkdir("./spiff", 0755);
-		string filename = string("./spiff/") + fn;
+		filename = string("./spiff/") + fn;
 		int mode = O_RDONLY;
 		if (strcmp(m, "a") == 0) mode = O_CREAT | O_APPEND | O_WRONLY;
 		if (strcmp(m, "r") == 0) mode = O_CREAT | O_RDONLY;
@@ -197,7 +198,12 @@ public:
 	int write(const uint8_t *d, int l) { return ::write(fd, d, l); } 
 	int write(uint8_t c) { return ::write(fd, &c, 1); }
 	int seek(int pos) { return ::lseek(fd, pos, SEEK_SET); } 
-	//int truncate(int pos) { return ::ftruncate(fd, pos); }
+	int size() { 
+		int fd2 = ::open(filename.c_str(), O_RDONLY);
+		int size = lseek(fd2, 0, SEEK_END); 
+		::close(fd2);
+		return size;
+	}
 	int flush() { return 0; }	
 	int read(uint8_t *buf, int len) { return ::read(fd, buf, len); }
 	~File() { close(); } 
@@ -221,6 +227,7 @@ struct FakeSPIFFS {
 	}
 	int usedBytes() { return 20 * 1024; }
 	int totalBytes() { return 115 * 1024; }
+	int truncate(const char *f, int pos) { return ::truncate(f, pos); }
 } SPIFFS, LittleFS;
 
 struct FakeArduinoOTA {
@@ -597,7 +604,12 @@ void esp_deep_sleep_start() {
 	argv[argc++] = NULL; 
 	execv("./csim", argv); 
 }
-void esp_light_sleep_start() { delayMicroseconds(sleep_timer); } 
+void esp_light_sleep_start() {
+	delayMicroseconds(0); // run csim hooks 
+	_micros += sleep_timer; 
+	if (esp32sim.seconds > 0 && micros() / 1000000.0 > esp32sim.seconds)
+		ESP32sim_exit();
+} 
 
 
 struct JsonResult { 

@@ -1302,11 +1302,9 @@ public:
 		SPIFFSVariableESP32Base::begin();
 
 		Serial.begin(115200);
-		LP();
-		Serial.printf("\n\n\n%s git:" GIT_VERSION " mac:%s time:%05.3fs built:" __DATE__ " " __TIME__ " \n", 
+		Serial.printf("BOOT %s git:" GIT_VERSION " mac:%s time:%05.3fs built:" __DATE__ " " __TIME__ " \n", 
 			basename_strip_ext(__BASE_FILE__).c_str(), getMacAddress().c_str(), millis() / 1000.0);
 		getLedPin();
-		LP();
 		//led.setPercent(30);
 		jw.onConnect([this](){
 			led.setPattern(500, 2);

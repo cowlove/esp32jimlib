@@ -312,7 +312,7 @@ public:
     string makeReport() override {
         float t = NAN, h = NAN;
         for(int r = 0; r < 15; r++) {
-            while(millis() < 750) delay(10); // HACK - DHT has trouble if read before power is stable for about 650ms
+            //while(millis() < 750) delay(10); // HACK - DHT has trouble if read before power is stable for about 650ms
             h = dht.readHumidity();
             t = dht.readTemperature();
             if (!isnan(t) && !isnan(h)) {

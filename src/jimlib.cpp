@@ -10,8 +10,10 @@
 #include <OneWireNg.h>
 #include <OneWireNg_CurrentPlatform.h>
 
-#include <SPIFFS.h>
-#define LittleFS SPIFFS
+//#include <SPIFFS.h>
+//#define LittleFS SPIFFS
+#include <LittleFS.h>
+
 
 #else
 #include "ESP32sim_ubuntu.h" // sigh remove all static defs here too

@@ -46,15 +46,6 @@ void wdtReset() {
 	esp_task_wdt_reset();
 }
 
-std::string strfmt(const char *format, ...) { 
-    va_list args;
-    va_start(args, format);
-	char buf[256];
-	vsnprintf(buf, sizeof(buf), format, args);
-    va_end(args);
-	return std::string(buf);
-}
-
 String Sfmt(const char *format, ...) { 
     va_list args;
     va_start(args, format);
@@ -64,14 +55,31 @@ String Sfmt(const char *format, ...) {
 	return String(buf);
 }
 
+std::string vsfmt(const char *format, va_list args) {
+	va_list args2;
+	va_copy(args2, args);
+	char buf[128]; // don't understand why stack variable+copy is faster
+	string rval;
+
+	int n = vsnprintf(buf, sizeof(buf), format, args);
+	if (n > sizeof(buf) - 1) {
+		rval.resize(n + 1);
+		vsnprintf((char *)rval.data(), rval.size(), format, args2);
+	} else { 
+		rval = buf;
+	}
+	va_end(args2);
+	return rval;
+}
+
 std::string sfmt(const char *format, ...) { 
     va_list args;
     va_start(args, format);
-	char buf[256];
-	vsnprintf(buf, sizeof(buf), format, args);
-    va_end(args);
-	return std::string(buf);
+	string rval = vsfmt(format, args);
+	va_end(args);
+	return rval;
 }
+
 
 int scanI2c() { 
 	int count = 0;

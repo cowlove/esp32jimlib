@@ -40,10 +40,11 @@ void wdtInit(int sec);
 void wdtReset();
 void ledcInit(int pin, int freq, int res, int channel); 
 
-std::string strfmt(const char *format, ...);
 String Sfmt(const char *format, ...);
+std::string vsfmt(const char *format, va_list args);
 std::string sfmt(const char *format, ...);
-
+//template<typename... Args> std::string strfmt(const char *format, Args... args) { return sfmt(format, args...); }
+#define strfmt sfmt 
 
 int scanI2c();
 void printPins();
@@ -1332,25 +1333,23 @@ public:
 	void out(const char *format, ...) { 
 		va_list args;
 		va_start(args, format);
-		char buf[1024];
-		vsnprintf(buf, sizeof(buf), format, args);
+		string s = vsfmt(format, args);
 		va_end(args);
-		mqtt.pub(buf);
-		printf("%s", buf);
+		mqtt.pub(s.c_str());
+		printf("%s", s.c_str());
 		printf("\n");
-		jw.udpDebug(buf);
+		jw.udpDebug(s.c_str());
 	}
 	void log(int ll, const char *format, ...) { 
+		if (logLevel < ll) 
+			return; 
 		va_list args;
 		va_start(args, format);
-		char buf[1024];
-		if (logLevel >= ll) { 
-			vsnprintf(buf, sizeof(buf), format, args);
-			va_end(args);
-			mqtt.pub(buf);
-			Serial.println(buf);
-			//jw.udpDebug(buf);
-		}
+		string s = vsfmt(format, args);
+		va_end(args);
+		mqtt.pub(s.c_str());
+		Serial.println(s.c_str());
+		//jw.udpDebug(buf);
 	}
 	void log(int l, String s) { log(l, s.c_str()); }
 	void log(int l, std::string s) { log(l, s.c_str()); }

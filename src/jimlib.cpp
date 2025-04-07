@@ -1,5 +1,4 @@
 #include "jimlib.h" //todo- remove all static defs from jimlib.h
-
 #ifndef CSIM
 #include <esp_task_wdt.h>
 #include <esp_mac.h>
@@ -13,12 +12,18 @@
 //#include <SPIFFS.h>
 //#define LittleFS SPIFFS
 #include <LittleFS.h>
-
-
-#else
+#else // #ifndef CSIM
 #include "ESP32sim_ubuntu.h" // sigh remove all static defs here too
-#endif
+#endif // #ifndef CSIM
 
+void wdtReset();
+void printPins();
+int scanI2c();
+std::string sfmt(const char *format, ...);
+std::string vsfmt(const char *format, va_list args);
+String Sfmt(const char *format, ...);
+void wdtInit(int sec);
+void ledcInit(int pin, int freq, int res, int channel);
 
 void ledcInit(int pin, int freq, int res, int channel) {
 #if ESP_ARDUINO_VERSION_MAJOR == 3 
@@ -82,7 +87,6 @@ std::string sfmt(const char *format, ...) {
 	return rval;
 }
 
-
 int scanI2c() { 
 	int count = 0;
 	for (uint8_t i = 8; i < 120; i++)
@@ -101,7 +105,6 @@ int scanI2c() {
 	Serial.print ("Found ");      
 	Serial.print (count, DEC);        // numbers of devices
 	Serial.println (" device(s).");
-
 	return count;
 }
 
@@ -119,9 +122,7 @@ void printPins() {
 			Serial.printf("%02d:%d ", n, digitalRead(n));
 	}
 	Serial.print("\n");
-#ifdef ESP32
-	esp_task_wdt_reset();
-#endif
+	wdtReset();
 }
 
 int LineBuffer::add(char c, std::function<void(const char *)> f/* = NULL*/) {
@@ -306,7 +307,10 @@ const String &getMacAddress() {
 	return mac;
 }
 
-SPIFFSVariableESP32Base::SPIFFSVariableESP32Base() { 
+SPIFFSVariableESP32Base::SPIFFSVariableESP32Base() {
+	if (filename.length() > 31) { 
+		printf("SPIFFSVariable WARNING filename '%s' length %d > 31\n", filename.c_str(), (int)filename.length());
+	} 
 	LittleFS.begin();
 }
 

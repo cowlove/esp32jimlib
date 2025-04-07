@@ -471,7 +471,8 @@ class RemoteSensorServer : public RemoteSensorProtocol {
     //uint32_t lastReportMs = 0, nextSleepTimeMs = 0; 
     // time remaining in sleep after being interrupted by pauseSleep();
     //SPIFFSVariable<int> spiffsResumeSleepMs = SPIFFSVariable<int>("/RemSenSrv_srs", 0);
-    DeepSleepElapsedTimer lastSynchTs = DeepSleepElapsedTimer("/RemSenSrv_srs", 0);
+    DeepSleepElapsedTimer lastSynchTs = DeepSleepElapsedTimer("/RemSenSrv_ls", 0);
+    DeepSleepElapsedTimer lastLastSynchTs = DeepSleepElapsedTimer("/RemSenSrv_lls", 0); // just for measuring/debugging
     SPIFFSVariable<bool> sensorsCompleteOnSleep = SPIFFSVariable<bool>("/RemSenSrv_sCoS", false);
     uint32_t lastReportTs = 0;
 
@@ -544,7 +545,7 @@ public:
         incomingHash = in[specialWords.SCHASH];
         if (in.find(specialWords.SERVER) != in.end()) return;
 
-        float late = lastSynchTs.elapsed() / 1000.0 - synchPeriodMin * 60;
+        float late = lastLastSynchTs.elapsed() / 1000.0 - synchPeriodMin * 60;
         printf("%09.3f %09.3f server <<<< %s (%.3fs late)\n", 
             deepsleepMs.millis() / 1000.0, millis() / 1000.0, s.c_str(), 
             late);
@@ -578,10 +579,8 @@ public:
                     }
                 }
                 if (hash == incomingHash) {
-                    if (lastSynchTs.elapsed() > ((synchPeriodMin * 60) - earlyWakeupSec) * 1000) { 
-                        for(auto p : modules) p->seen = false;  // resets countSeen() below
-                    } 
-                    if (countSeen() == 0) {
+                    if (countSeen() == 0) { // first sensor? reset synch period 
+                        lastLastSynchTs.set(lastSynchTs.millis());
                         lastSynchTs.reset();
                     } 
                     p->seen = true;
@@ -629,7 +628,12 @@ public:
     }
     void run() {
         checkInit();
-        string in = fakeEspNow.read();
+        if (lastSynchTs.elapsed() > ((synchPeriodMin * 60) - earlyWakeupSec) * 1000) { 
+            lastLastSynchTs.set(lastSynchTs.millis()); // use for measuring/debugging
+            lastSynchTs.reset();
+            for(auto p : modules) p->seen = false;  // resets countSeen() below
+        } 
+string in = fakeEspNow.read();
         if (in != "") 
             onReceive(in);
         static HzTimer timer(.1);

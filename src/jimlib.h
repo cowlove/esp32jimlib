@@ -1446,6 +1446,7 @@ public:
 int getResetReason(int cpu = 0);
 
 class DeepSleepElapsedTimer { 
+	static const int typicalBootTimeMs = 500;
     SPIFFSVariable<uint32_t> bootOffsetMs, startTs; 
     bool initialized = false, startExpired;
 	string prefix;
@@ -1465,7 +1466,7 @@ public:
 		startTs(_prefix + "_st", 0), 
 		startExpired(_startExpired) {}
     void prepareSleep(uint32_t ms) { 
-        bootOffsetMs = bootOffsetMs + ::millis() + ms;
+        bootOffsetMs = bootOffsetMs + ::millis() + typicalBootTimeMs + ms;
     }
     uint32_t millis() {
 		checkInit();

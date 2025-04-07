@@ -148,7 +148,7 @@ typedef EggTimer Timer;
 class DigitalDebounce {
 	EggTimer timer;
 	bool recentlyPressed;
-	long startPress;
+	uint32_t startPress;
 	int lastDuration;
 	int lastVal;
 public:
@@ -167,7 +167,7 @@ public:
 			}
 			recentlyPressed = true;
 			timer.reset();
-			duration = max(1UL, millis() - startPress);
+			duration = max((uint32_t)1, (uint32_t)millis() - startPress);
 		} else {
 			duration = 0;
 			if (timer.tick()) 
@@ -575,6 +575,7 @@ template<> inline bool fromString(const string &s, uint32_t &v) { return sscanf(
 template<> inline bool fromString(const string &s, int64_t &v) { return sscanf(s.c_str(), "%ld ", &v) == 1; }
 template<> inline bool fromString(const string &s, float &v) { return sscanf(s.c_str(), "%f ", &v) == 1; }
 template<> inline bool fromString(const string &s, string &v) { v = s; return true; }
+template<> inline bool fromString(const string &s, bool &v) { v = (s == "true"); return true; }
 
 template<class T> string toString(const T&v);
 template<> inline string toString(const uint64_t &v) { return sfmt("%lu ", v); }
@@ -582,7 +583,8 @@ template<> inline string toString(const uint32_t &v) { return sfmt("%u ", v); }
 template<> inline string toString(const int64_t &v) { return sfmt("%ld ", v); }
 template<> inline string toString(const int &v) { return sfmt("%d ", v); }
 template<> inline string toString(const float &v) { return sfmt("%f ", v); }
-template<> inline string toString(const string &s) { return s; }
+template<> inline string toString(const string &v) { return v; }
+template<> inline string toString(const bool &v) { return v ? "true" : "false"; }
 
 #define LP() printf("%09.3f %s:%d\n", millis() / 1000.0, basename(__FILE__), __LINE__)
 template<> inline bool fromString(const string &s, std::vector<string> &v) { 
@@ -1442,6 +1444,40 @@ public:
 };
 	
 int getResetReason(int cpu = 0);
+
+class DeepSleepElapsedTimer { 
+    SPIFFSVariable<uint32_t> bootOffsetMs, startTs; 
+    bool initialized = false, startExpired;
+	string prefix;
+	void checkInit() { 
+		if (!initialized) { 
+            if (getResetReason(0) != 5) {
+                bootOffsetMs = startExpired ? 0xf00000 : 0;
+				startTs = 0;
+			}
+            initialized = true;
+        }
+	}
+public:
+    DeepSleepElapsedTimer(const string &_prefix, bool _startExpired = false) 
+		: prefix(_prefix), 
+		bootOffsetMs(_prefix + "_off", 0),
+		startTs(_prefix + "_st", 0), 
+		startExpired(_startExpired) {}
+    void prepareSleep(uint32_t ms) { 
+        bootOffsetMs = bootOffsetMs + ::millis() + ms;
+    }
+    uint32_t millis() {
+		checkInit();
+        return ::millis() + bootOffsetMs - startTs;
+    }
+	void set(uint32_t ms) {
+		checkInit(); 
+		startTs = ::millis() + bootOffsetMs - ms;
+	}
+    uint32_t elapsed() { return this->millis(); }
+    void reset() { set(0); }
+};
 
 
 //#endif

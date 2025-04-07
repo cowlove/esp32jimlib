@@ -449,49 +449,40 @@ SchemaParser::RegisterClass SensorVariable::reg([](const string &s)->Sensor * {
 // 
 //    The main program loop should avoid logging, sleeping, or using the network while the server is 
 //    listening for clients.  This can be accomplished by only doing those things while sleep is allowed
-//    with getAllowedSleepMin()
+//    with getAllowedSleepMin() of about the expected time to accomplish the task 
 //   
 //    Not every wakeup is necessarily step #1.  The program loop may wakeup the MCU for other reasons.
-//    The server uses a DeepSleepElapsedTimer for measuring time since the last synch point, so it 
-//    survives across additional wakeups.   The MCU shouldn't sleep during the receive period between 
-//    step 2 and step 4, so in-memory state can be used to keep track of the number of clients seen,
-//    lingerSec, clientTimeoutSec, etc. 
-//
-//    If the server boots from a hard reset, lastSynchTs is cleared and step #1 starts fresh. 
-//    when booting from a sleep, it is assumed that lastSynchTs is still valid and allows further
-//    sleeps if its not within earlyWakeupSec of the next synch point.  Otherwise, it's late and 
-//    has no clients, and clears lastSynchTs 
+//    The server registers if all clients are complete in prepareSleep() 
 //
 //    A few complications exist with a hard boot and a zero lastSynchTs.   This is handled by setting
 //    lastSynchTs to millis() - synchPeriodMin and extending a larger clientTimeoutZeroClientsSec to 
 //    allow catching the first client.  The first client will reset lastSynchTs and after that 
 //    clientTimeoutSec/lingerSec will apply. 
 
+extern DeepSleepElapsedTimer deepsleepMs;
+
 class RemoteSensorServer : public RemoteSensorProtocol { 
     ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true);
     vector<RemoteSensorModule *> modules;
-    
+
     // used to pre-feed and initialize so server boots/wakes with the last values.  cleared on hard boot 
     SPIFFSVariable<vector<string>> spiffResultLog = SPIFFSVariable<vector<string>>("/RemoteSensorSever.Log", {});
     
-    uint32_t lastReportMs = 0, nextSleepTimeMs = 0; 
+    //uint32_t lastReportMs = 0, nextSleepTimeMs = 0; 
     // time remaining in sleep after being interrupted by pauseSleep();
-    SPIFFSVariable<int> spiffsResumeSleepMs = SPIFFSVariable<int>("/RemSenSrv_srs", 0);
-public: 
-    int countSeen() { 
-        int rval = 0;
-        for(auto p : modules) { 
-            if (p->seen) rval++;
+    //SPIFFSVariable<int> spiffsResumeSleepMs = SPIFFSVariable<int>("/RemSenSrv_srs", 0);
+    DeepSleepElapsedTimer lastSynchTs = DeepSleepElapsedTimer("/RemSenSrv_srs", 0);
+    SPIFFSVariable<bool> sensorsCompleteOnSleep = SPIFFSVariable<bool>("/RemSenSrv_sCoS", false);
+    uint32_t lastReportTs = 0;
+
+    bool initialized = false;
+    void checkInit() {
+        if (initialized == true) return;
+        initialized = true;
+        if (getResetReason(0) != 5) {
+            lastSynchTs.set(synchPeriodMin * 60 * 1000);
+            sensorsCompleteOnSleep = false;
         }
-        return rval;
-    }
-    float lastTrafficSec() { 
-        return (millis() - lastReportMs) / 1000.0;
-    }
-    int serverSleepSeconds = 90;
-    int serverSleepLinger = 10;
-    RemoteSensorServer(vector<RemoteSensorModule *> m) : modules(m) {
-        // BAD hack to resume values after deep sleep - replay log of last received valid data lines
         vector<string> v = spiffResultLog;
         for(auto s : v) {
             std::map<string, string> in = parseLine(s);
@@ -506,26 +497,45 @@ public:
                 }
             }
         }
-        if (spiffsResumeSleepMs > 0) {
-            for(auto p : modules) 
-                p->seen = true;
-            nextSleepTimeMs = millis() + spiffsResumeSleepMs;
-            spiffsResumeSleepMs = 0;
+        for(auto p : modules) 
+            p->seen = sensorsCompleteOnSleep;
+        sensorsCompleteOnSleep = false;
+        //if (spiffsResumeSleepMs > 0) {
+        //    for(auto p : modules) 
+        //        p->seen = true;
+        //    nextSleepTimeMs = millis() + spiffsResumeSleepMs;
+        //    spiffsResumeSleepMs = 0;
+        //}
+    }
+public: 
+    //int serverSleepSeconds = 90;
+    //int serverSleepLinger = 10;
+    float synchPeriodMin = 2.0;
+    float lingerSec = 5;
+    float clientTimeoutSec = 30;
+    float clientTimeoutZeroTrafficMin = -1; /* < 0 never timeout for zero clients */
+    float earlyWakeupSec = 5;
+
+    int countSeen() { 
+        int rval = 0;
+        for(auto p : modules) { 
+            if (p->seen) rval++;
         }
-        lastReportMs = 0;
+        return rval;
+    }
+    float lastTrafficSec() { 
+        return (lastSynchTs.elapsed()) / 1000.0;
+    }
+ 
+    RemoteSensorServer(vector<RemoteSensorModule *> m) : modules(m) {
+        // BAD hack to resume values after deep sleep - replay log of last received valid data lines
     }    
     void prepareSleep(int ms) {
-        int sleepLeftMs = ((int)nextSleepTimeMs) - millis() - ms;
-        if (sleepLeftMs < 10 * 1000) { 
-            // close to, or after our expected wake time, don't resumed the period
-            for(auto p : modules) p->seen = false;
-            spiffsResumeSleepMs = 0;
-        } else { 
-            // resume this planned wait period after this coming short sleep
-            spiffsResumeSleepMs = sleepLeftMs;
-        }
+        lastSynchTs.prepareSleep(ms);
+        sensorsCompleteOnSleep = (countSeen() == modules.size());
     }
     void onReceive(const string &s) {
+        checkInit();
         if (s.find(specialWords.ACK) == 0) 
             return;
         string incomingMac = "", incomingHash = "";
@@ -533,7 +543,11 @@ public:
         incomingMac = in[specialWords.MAC];
         incomingHash = in[specialWords.SCHASH];
         if (in.find(specialWords.SERVER) != in.end()) return;
-        printf("%09.3f server <<<< %s\n", millis() / 1000.0, s.c_str());
+
+        float late = lastSynchTs.elapsed() / 1000.0 - synchPeriodMin * 60;
+        printf("%09.3f %09.3f server <<<< %s (%.3fs late)\n", 
+            deepsleepMs.millis() / 1000.0, millis() / 1000.0, s.c_str(), 
+            late);
 
         bool packetHandled = false;
         for(auto p : modules) { 
@@ -564,18 +578,19 @@ public:
                     }
                 }
                 if (hash == incomingHash) {
-                    if (nextSleepTimeMs - millis() < 10000 || nextSleepTimeMs - millis() > serverSleepSeconds * 1000) {
-                        for(auto p : modules) p->seen = false;
+                    if (lastSynchTs.elapsed() > ((synchPeriodMin * 60) - earlyWakeupSec) * 1000) { 
+                        for(auto p : modules) p->seen = false;  // resets countSeen() below
                     } 
                     if (countSeen() == 0) {
-                        nextSleepTimeMs = millis() + serverSleepSeconds * 1000;
+                        lastSynchTs.reset();
                     } 
                     p->seen = true;
-                    lastReportMs = millis();
+                    lastReportTs = millis();
                     p->parseAllResults(s);
-                    int moduleSleepSec = (nextSleepTimeMs - millis()) / 1000;
-                    if (moduleSleepSec > serverSleepSeconds)
-                        moduleSleepSec = serverSleepSeconds;;
+                    int moduleSleepSec = ((synchPeriodMin * 60 * 1000) - lastSynchTs.elapsed()) / 1000; 
+                    //int moduleSleepSec = (nextSleepTimeMs - millis()) / 1000;
+                    //if (moduleSleepSec > serverSleepSeconds)
+                    //    moduleSleepSec = serverSleepSeconds;;
                     string out = "SERVER=1 MAC=" + p->mac + " SCHASH=" + hash + " SLEEP=" 
                         + sfmt("%d ", moduleSleepSec) + p->makeAllSetValues();
                     write(out);
@@ -605,7 +620,7 @@ public:
     }
 
     void write(const string &s) { 
-        printf("%09.3f server >>>> %s\n", millis() / 1000.0, s.c_str());
+        printf("%09.3f %09.3f server >>>> %s\n", deepsleepMs.millis()/1000.0, millis() / 1000.0, s.c_str());
         fakeEspNow.write(s);
     }
 
@@ -613,6 +628,7 @@ public:
         // set up ESPNOW, register this->onReceive() listener 
     }
     void run() {
+        checkInit();
         string in = fakeEspNow.read();
         if (in != "") 
             onReceive(in);
@@ -621,23 +637,33 @@ public:
             //printf("%09.3f Seen %d/%d modules, last traffic %d sec ago\n",
             // millis() / 1000.0, countSeen(), (int)modules.size(), (int)(millis() - lastReportMs) / 1000);
         }
-        if (countSeen() > 0 && (nextSleepTimeMs - millis()) / 1000 > serverSleepSeconds) {
-            // missing some sensors but the entire sleep period has elapsed?  Just reset to next sleep Period 
-            nextSleepTimeMs = millis() + serverSleepSeconds * 1000;
-            lastReportMs = millis();                
-        }
+        //if (countSeen() > 0 && (nextSleepTimeMs - millis()) / 1000 > serverSleepSeconds) {
+        //    // missing some sensors but the entire sleep period has elapsed?  Just reset to next sleep Period 
+        //    nextSleepTimeMs = millis() + serverSleepSeconds * 1000;
+        //    lastReportMs = millis();                
+        //}
     }
-    float getSleepRequest() { 
-        if (countSeen() == modules.size() && (millis() - lastReportMs) > serverSleepLinger * 1000) {
-            float sleepSec = (nextSleepTimeMs - millis()) / 1000.0;
-            if (sleepSec > serverSleepSeconds)
-                sleepSec = -1;
-            if (sleepSec < 20)
-                sleepSec = -1;
-            //printf("All %d modules accounted for, OK to sleep %d sec\n", (int)modules.size(), sleepSec);
-            return sleepSec;  
-        } 
-        return -1;
+
+    float getSleepRequest() { // rename to getSleepRequestSec()
+        checkInit();
+        float sleepSec = -1;
+        float newSleepSec = synchPeriodMin * 60 - earlyWakeupSec - lastSynchTs.elapsed() / 1000.0;  
+        float lastSynchAgeMin = lastSynchTs.elapsed() / 1000.0 / 60.0;
+        
+        if (0) { 
+            printf("%09.3f %09.3f lastSynchTs %d, lastSynchAge %.2f sleepSec %.2f countSeen %d modules %d\n", 
+                millis()/1000.0, deepsleepMs.millis()/1000.0, (int)lastSynchTs.elapsed(), lastSynchAgeMin, newSleepSec, countSeen(), (int)modules.size());
+        }
+        if (countSeen() == 0 && clientTimeoutZeroTrafficMin > 0 
+            && lastSynchAgeMin > synchPeriodMin + clientTimeoutZeroTrafficMin)
+            sleepSec = newSleepSec;
+        if (countSeen() > 0 && countSeen() < modules.size() && lastSynchAgeMin > clientTimeoutSec / 60)
+            sleepSec = newSleepSec;
+        if (countSeen() == modules.size() && lastSynchAgeMin > lingerSec / 60)
+            sleepSec = newSleepSec;
+        
+        if (sleepSec < 0) sleepSec = -1;
+        return sleepSec;  
     }
 };
 

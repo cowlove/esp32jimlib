@@ -105,8 +105,8 @@ public:
 	void exit();
 } esp32sim;
 
-uint64_t micros();
-uint64_t millis();
+uint32_t micros();
+uint32_t millis();
 
 void ESP32sim_exit(); 
 
@@ -577,8 +577,10 @@ void esp_deep_sleep_start() {
 	double newRunSec = -1;
 	if (esp32sim.seconds >= 0) {
 		newRunSec = esp32sim.seconds - (sleep_timer + _micros) / 1000000;
-		if (newRunSec < 0) 
+		if (newRunSec < 0) { 
+			fflush(stdout);
 			ESP32sim_exit();
+		}
 	}
 
 	for (auto i : deepSleepHooks) i(sleep_timer);
@@ -1367,7 +1369,7 @@ void ESP32sim::delayMicroseconds(long long us) {
 
 void delayMicroseconds(int m) { esp32sim.delayMicroseconds(m); }
 
-uint64_t micros() { return _microsMax > 0 ? ++_micros & _microsMax : ++_micros; }
-uint64_t millis() { return ++_micros / 1000; }
+uint32_t micros() { return _microsMax > 0 ? ++_micros & _microsMax : ++_micros; }
+uint32_t millis() { return ++_micros / 1000; }
 
 #endif // #ifdef _ESP32SIM_UBUNTU_H_

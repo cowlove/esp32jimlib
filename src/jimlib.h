@@ -571,12 +571,14 @@ using std::string;
 template<class T> bool fromString(const string &s, T&v);
 template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d ", &v) == 1; }
 template<> inline bool fromString(const string &s, uint64_t &v) { return sscanf(s.c_str(), "%lu ", &v) == 1; }
+template<> inline bool fromString(const string &s, uint32_t &v) { return sscanf(s.c_str(), "%u ", &v) == 1; }
 template<> inline bool fromString(const string &s, int64_t &v) { return sscanf(s.c_str(), "%ld ", &v) == 1; }
 template<> inline bool fromString(const string &s, float &v) { return sscanf(s.c_str(), "%f ", &v) == 1; }
 template<> inline bool fromString(const string &s, string &v) { v = s; return true; }
 
 template<class T> string toString(const T&v);
 template<> inline string toString(const uint64_t &v) { return sfmt("%lu ", v); }
+template<> inline string toString(const uint32_t &v) { return sfmt("%u ", v); }
 template<> inline string toString(const int64_t &v) { return sfmt("%ld ", v); }
 template<> inline string toString(const int &v) { return sfmt("%d ", v); }
 template<> inline string toString(const float &v) { return sfmt("%f ", v); }

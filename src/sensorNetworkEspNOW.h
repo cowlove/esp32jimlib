@@ -428,9 +428,50 @@ SchemaParser::RegisterClass SensorVariable::reg([](const string &s)->Sensor * {
 });
 
 
+// Timing/Sleep protocol
+//
+// Server maintains a reporting timestamp.  Server wakes up or boots slightly before the timestamp,
+// and listens for clients.  The server sets the reporting timestamp upon hearing from the first client,
+//  After all clients have been heard, it waits a linger time to ensure
+//  all clients are sleeping and allows a sleep until earlyWakeupSec before the next synch
+// Sequence:
+// 1) server boots or wakes with no state and assumes it is near a reporting timestamp, and does not allow
+//    sleeps
+// 2) Upon receipt of the first timestamp, sets lastSynchTs and begins counting, notifyihg clients
+//    to sleep for lastSynchTs + sychPeriodMin, and still does not allow sleeps
+// 3) After all clients have been heard and notified of the wakeup time, server waits
+//    lingerSec not allowing sleeps, to make sure all clients are accounted for
+// 4) If a client is missing, the server optionally allows sleeps after min(lingerSec,clientTimeoutSec)
+// 5) If no sleep happens and the server keeps waiting, it will hear the clients begin to report in
+//    for the next synch period.   If it is earlier than earlyWakupSec before the synch point,
+//    it will put them back to sleep with a short sleep duration.  It is within earlyWakupSec of the
+//    synch point, the server will reset lastSynchTs and continue at step 2
+// 
+//    The main program loop should avoid logging, sleeping, or using the network while the server is 
+//    listening for clients.  This can be accomplished by only doing those things while sleep is allowed
+//    with getAllowedSleepMin()
+//   
+//    Not every wakeup is necessarily step #1.  The program loop may wakeup the MCU for other reasons.
+//    The server uses a DeepSleepElapsedTimer for measuring time since the last synch point, so it 
+//    survives across additional wakeups.   The MCU shouldn't sleep during the receive period between 
+//    step 2 and step 4, so in-memory state can be used to keep track of the number of clients seen,
+//    lingerSec, clientTimeoutSec, etc. 
+//
+//    If the server boots from a hard reset, lastSynchTs is cleared and step #1 starts fresh. 
+//    when booting from a sleep, it is assumed that lastSynchTs is still valid and allows further
+//    sleeps if its not within earlyWakeupSec of the next synch point.  Otherwise, it's late and 
+//    has no clients, and clears lastSynchTs 
+//
+//    A few complications exist with a hard boot and a zero lastSynchTs.   This is handled by setting
+//    lastSynchTs to millis() - synchPeriodMin and extending a larger clientTimeoutZeroClientsSec to 
+//    allow catching the first client.  The first client will reset lastSynchTs and after that 
+//    clientTimeoutSec/lingerSec will apply. 
+
 class RemoteSensorServer : public RemoteSensorProtocol { 
     ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true);
     vector<RemoteSensorModule *> modules;
+    
+    // used to pre-feed and initialize so server boots/wakes with the last values.  cleared on hard boot 
     SPIFFSVariable<vector<string>> spiffResultLog = SPIFFSVariable<vector<string>>("/RemoteSensorSever.Log", {});
     
     uint32_t lastReportMs = 0, nextSleepTimeMs = 0; 

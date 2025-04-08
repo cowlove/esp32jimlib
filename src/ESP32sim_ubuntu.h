@@ -78,13 +78,14 @@ public:
 	virtual void parseArg(char **&a, char **) override {
 		if (strcmp(*a, "--csimFlag") == 0) addflag(*(++a));
 	}
-} csim_flags;
+};
+
+extern ESP32sim_flags csim_flags;
 
 #define byte char
 
-static uint64_t _micros = 0;
-static uint64_t _microsMax = 0xffffffff;
-
+extern uint64_t _micros; 
+extern uint64_t _microsMax;
 
 class ESP32sim {
 public:
@@ -103,7 +104,7 @@ public:
 	void delayMicroseconds(long long us);
 	void main(int argc, char **argv);
 	void exit();
-} esp32sim;
+};
 
 uint32_t micros();
 uint32_t millis();
@@ -112,49 +113,38 @@ void ESP32sim_exit();
 
 // Stub out FreeRTOS stuff 
 typedef int SemaphoreHandle_t;
-static int Semaphores[10];
-static int nextSem = 0;
-int xSemaphoreCreateCounting(int max, int init) { 
-	Semaphores[nextSem] = init;
-	return nextSem++;
-} 
-int xSemaphoreCreateMutex() { return xSemaphoreCreateCounting(1, 1); } 
-int xSemaphoreGive(int h) { Semaphores[h]++; return 0; } 
-int xSemaphoreTake(int h, int delay) {
-	if (Semaphores[h] > 0) {
-		Semaphores[h]--;
-		return 1;
-	}
-	return 0;
-}
-int uxSemaphoreGetCount(int h) { return Semaphores[h]; }
-
+int xSemaphoreCreateCounting(int max, int init);
+int xSemaphoreCreateMutex() ;
+int xSemaphoreGive(int h) ;
+int xSemaphoreTake(int h, int delay) ;
+int uxSemaphoreGetCount(int h);
 
 
 #define portMAX_DELAY 0 
 #define tskIDLE_PRIORITY 0
 #define pdMS_TO_TICKS(x) (x)
 #define portTICK_PERIOD_MS 0 	
-void xTaskCreate(void (*)(void *), const char *, int, void *, int, void *) {}
+inline static void xTaskCreate(void (*)(void *), const char *, int, void *, int, void *) {}
 #define WRITE_PERI_REG(a, b) if(0) {}
 #define RTC_CNTL_BROWN_OUT_REG 0
 
 typedef int esp_err_t;
 typedef int RESET_REASON; 
 typedef struct { int timeout_ms, idle_core_mask, trigger_panic; } esp_task_wdt_config_t;  
-void esp_task_wdt_init(const esp_task_wdt_config_t *) {}
-void esp_task_wdt_init(int, int) {}
-void esp_task_wdt_deinit() {}
-void esp_task_wdt_reset() {}
-esp_err_t esp_task_wdt_add(void *) { return 0; }
-esp_err_t esp_task_wdt_delete(const void *) { return 0; }
-int rtc_get_reset_reason(int) { return esp32sim.resetReason; } 
+inline static void esp_task_wdt_init(const esp_task_wdt_config_t *) {}
+inline static void esp_task_wdt_init(int, int) {}
+inline static void esp_task_wdt_deinit() {}
+inline static void esp_task_wdt_reset() {}
+inline static esp_err_t esp_task_wdt_add(void *) { return 0; }
+inline static esp_err_t esp_task_wdt_delete(const void *) { return 0; }
+int rtc_get_reset_reason(int);
 
 #define ADC1_CHANNEL_1 0
 #define ADC1_CHANNEL_2 0
 #define ADC1_CHANNEL_3 0
-int adc1_get_raw(int) { return 0; }
-#define delayUs(x) delayMicroseconds(x)
+inline static int adc1_get_raw(int) { return 0; }
+void delayMicroseconds(int);
+inline static void delayUs(int x) { delayMicroseconds(x); } 
 #define NEO_GRB 0
 #define NEO_KHZ800 0
 struct Adafruit_NeoPixel {
@@ -228,7 +218,9 @@ struct FakeSPIFFS {
 	int usedBytes() { return 20 * 1024; }
 	int totalBytes() { return 115 * 1024; }
 	int truncate(const char *f, int pos) { return ::truncate(f, pos); }
-} SPIFFS, LittleFS;
+};
+
+extern FakeSPIFFS SPIFFS, LittleFS;
 
 struct FakeArduinoOTA {
 	void begin() {}
@@ -238,7 +230,9 @@ struct FakeArduinoOTA {
 	void onStart(function<void(void)>) {}
 	void onError(function<void(int)>) {}
 	void onProgress(function<void(int, int)>) {}
-} ArduinoOTA;
+};
+
+extern FakeArduinoOTA ArduinoOTA;
 
 typedef int ota_error_t; 
 #define OTA_AUTH_ERROR 0 
@@ -257,7 +251,9 @@ struct FakeESP {
 	uint32_t getMinFreeHeap() { return minFreeHeap = min(minFreeHeap, getFreeHeap()); } 
 	void restart() { ESP32sim_exit(); }
 	uint32_t getChipId() { return 0xdeadbeef; }
-} ESP;
+};
+
+extern FakeESP ESP;
 
 struct WiFiManager {
 };
@@ -278,10 +274,8 @@ typedef OneWireNg OneWireNg_CurrentPlatform;
 
 
 
-static int ESP32sim_currentPwm[16];
-void ledcWrite(int chan, int val) {
-		ESP32sim_currentPwm[chan] = val;
-} 
+void ledcWrite(int chan, int val);
+
 struct ledc_channel_config_t {
 	int gpio_num, speed_mode, channel, timer_sel, duty, hpoint;
 };
@@ -303,11 +297,13 @@ typedef int ledc_channel_t;
 #define LEDC_TIMER_6_BIT 0 
 #define LEDC_USE_RTC8M_CLK 0 
 
-static const int CONFIG_CONSOLE_UART_NUM = 0;
+#define CONFIG_CONSOLE_UART_NUM  0
 static inline void uart_tx_wait_idle(int) {}
 static inline void esp_sleep_pd_config(int, int) {}
 #define ESP_PD_DOMAIN_RTC_PERIPH 0
 #define ESP_PD_OPTION_AUTO 0 
+extern int ESP32sim_currentPwm[];
+
 static inline void ledc_update_duty(int, int) {}
 //#define LEDC_LS_MODE 0
 static inline void ledc_set_duty(int, int chan, int val) {
@@ -315,7 +311,7 @@ static inline void ledc_set_duty(int, int chan, int val) {
 }
 static inline int ledc_get_duty(int, int) { return 0; }
 static inline void ledc_timer_config(void *) {}
-void ledc_channel_config(void *) {}
+static inline void ledc_channel_config(void *) {}
 
 
 // simple pin manager to simply return values that were written
@@ -358,9 +354,7 @@ public:
 		} 
 		return pins[pin];
 	}
-} pinManObject;
-
-ESP32sim_pinManager *ESP32sim_pinManager::manager = &pinManObject;
+}; 
 
 // Takes an input of a text file with line-delimited usec intervals between 
 // interrupts, delivers an interrupt to the sketch-provided ISR
@@ -391,26 +385,29 @@ public:
 			getNext();
 		}
 	}
-} intMan;
+};
 
-void pinMode(int, int) {}
-void digitalWrite(int p, int v) { ESP32sim_pinManager::manager->digitalWrite(p, v); };
-int digitalRead(int p) { return ESP32sim_pinManager::manager->digitalRead(p); }
-int digitalPinToInterrupt(int) { return 0; }
-void attachInterrupt(int, void (*i)(), int) { intMan.intFunc = i; } 
-void ledcSetup(int, int, int) {}
-void ledcAttachPin(int, int) {}
+extern InterruptManager intMan;
+
+
+static inline void pinMode(int, int) {}
+static inline void digitalWrite(int p, int v) { ESP32sim_pinManager::manager->digitalWrite(p, v); };
+static inline int digitalRead(int p) { return ESP32sim_pinManager::manager->digitalRead(p); }
+static inline int digitalPinToInterrupt(int) { return 0; }
+static inline void attachInterrupt(int, void (*i)(), int) { intMan.intFunc = i; } 
+static inline void ledcSetup(int, int, int) {}
+static inline void ledcAttachPin(int, int) {}
 #ifndef ESP32CORE_V2
-void ledcAttachChannel(int, int, int, int) {}
+static inline void ledcAttachChannel(int, int, int, int) {}
 #endif
-void ledcDetachPin(int) {}
+static inline void ledcDetachPin(int) {}
 void delayMicroseconds(int m);
-void delay(int m) { delayMicroseconds(m*1000); }
-void yield() { intMan.run(); }
+static inline void delay(int m) { delayMicroseconds(m*1000); }
+static inline void yield() { intMan.run(); }
 //void analogSetCycles(int) {}
-void adcAttachPin(int) {}
-int analogRead(int p) { return ESP32sim_pinManager::manager->analogRead(p); } 
-void csim_analogSet(int p, int v) { ESP32sim_pinManager::manager->csim_analogSet(p, v); }
+static inline void adcAttachPin(int) {}
+static inline int analogRead(int p) { return ESP32sim_pinManager::manager->analogRead(p); } 
+static inline void csim_analogSet(int p, int v) { ESP32sim_pinManager::manager->csim_analogSet(p, v); }
 
 #define radians(x) ((x)*M_PI/180)
 #define degrees(x) ((x)*180.0/M_PI)
@@ -460,11 +457,11 @@ class String {
 	void replace(const char *, const char *) {}
 };
 
-String operator +(const char *a, const String &b) { return String(a) + b; }
-String operator +(const String &a, const char *b) { return String(a) + String(b); }
-bool operator ==(const char *a, const String &b) { return b.st == a; }
-bool operator ==(const String &a, const char *b) { return a.st == b; }
-bool operator ==(const String &a, const String &b) { return a.st == b.st; }
+static inline String operator +(const char *a, const String &b) { return String(a) + b; }
+static inline String operator +(const String &a, const char *b) { return String(a) + String(b); }
+static inline bool operator ==(const char *a, const String &b) { return b.st == a; }
+static inline bool operator ==(const String &a, const char *b) { return a.st == b; }
+static inline bool operator ==(const String &a, const String &b) { return a.st == b.st; }
 class IPAddress {
 public:
 	IPAddress(int, int, int, int) {}
@@ -531,7 +528,9 @@ class FakeSerial {
 	void scheduleInput(int64_t ms, const String &s) { 
 		inputQueue.push_back(pair<int64_t,String>(ms, s));
 	}
-} Serial, Serial1, Serial2;
+};
+
+extern FakeSerial Serial, Serial1, Serial2;
 
 typedef FakeSerial Stream;
 
@@ -552,67 +551,23 @@ typedef FakeSerial Stream;
 # define ntohll(x) (((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
 #endif
 	
-uint64_t csim_mac = 0xffeeddaabbcc;
-void esp_read_mac(uint8_t *out, int) {
-	uint64_t nmac = htonll(csim_mac);
-	uint8_t *p = (uint8_t *)&nmac;
-	memcpy(out, p + 2, 6);
-}
+void esp_read_mac(uint8_t *out, int);
 
 typedef int gpio_num_t;
 
-void gpio_deep_sleep_hold_dis() {}
-void gpio_deep_sleep_hold_dis(int) {}
-void gpio_deep_sleep_hold_en() {}
-void gpio_hold_dis(int)  {}
-void gpio_hold_en(int)  {}
-uint64_t sleep_timer = 0;
-int esp_sleep_enable_timer_wakeup(uint64_t t) { sleep_timer = t; return 0; }
+inline static void gpio_deep_sleep_hold_dis() {}
+inline static void gpio_deep_sleep_hold_dis(int) {}
+inline static void gpio_deep_sleep_hold_en() {}
+inline static void gpio_hold_dis(int)  {}
+inline static void gpio_hold_en(int)  {}
+extern uint64_t sleep_timer;
+inline static int esp_sleep_enable_timer_wakeup(uint64_t t) { sleep_timer = t; return 0; }
 
 // TODO move all this to csim object
 typedef std::function<void(uint64_t usec)> deepSleepHookT;
-vector<deepSleepHookT> deepSleepHooks;
-void onDeepSleep(deepSleepHookT func) { deepSleepHooks.push_back(func); }
-void esp_deep_sleep_start() {
-	double newRunSec = -1;
-	if (esp32sim.seconds >= 0) {
-		newRunSec = esp32sim.seconds - (sleep_timer + _micros) / 1000000;
-		if (newRunSec < 0) { 
-			fflush(stdout);
-			ESP32sim_exit();
-		}
-	}
-
-	for (auto i : deepSleepHooks) i(sleep_timer);
-	char *argv[128];
-	int argc = 0; 
-	for(char *const *p = esp32sim.argv; *p != NULL; p++) {
-		if (strcmp(*p, "--boot-time") == 0) p++;
-		else if (strcmp(*p, "--seconds") == 0) p++;
-		else if (strcmp(*p, "--reset-reason") == 0) p++;
-		else if (strcmp(*p, "--show-args") == 0) {/*skip arg*/}
-		else argv[argc++] = *p;
-	}
-	char bootTimeBuf[32], secondsBuf[32];
-	snprintf(bootTimeBuf, sizeof(bootTimeBuf), "%ld", esp32sim.bootTimeUsec + sleep_timer + _micros);
-	argv[argc++] = (char *)"--boot-time";
-	argv[argc++] = bootTimeBuf; 
-	snprintf(secondsBuf, sizeof(secondsBuf), "%f", newRunSec);
-	argv[argc++] = (char *)"--seconds";
-	argv[argc++] = secondsBuf; 
-	argv[argc++] = (char *)"--reset-reason";
-	argv[argc++] = (char *)"5";
-	argv[argc++] = (char *)"--show-args";
-	argv[argc++] = NULL; 
-	execv("./csim", argv); 
-}
-void esp_light_sleep_start() {
-	delayMicroseconds(0); // run csim hooks 
-	_micros += sleep_timer; 
-	if (esp32sim.seconds > 0 && micros() / 1000000.0 > esp32sim.seconds)
-		ESP32sim_exit();
-} 
-
+void onDeepSleep(deepSleepHookT func);
+void esp_deep_sleep_start();
+void esp_light_sleep_start();
 
 struct JsonResult { 
 	operator int()  { return 0; }
@@ -631,13 +586,7 @@ struct FakeWiFi {
 
 	int curStatus = WL_DISCONNECTED;
 	int begin(const char *, const char *) { curStatus = WL_CONNECTED; return 0; }
-	int status() {
-		bool disable = simulatedFailMinutes > 0 && 
-			((micros() + esp32sim.bootTimeUsec) / 1000000 / 60) 
-			% simulatedFailMinutes == simulatedFailMinutes - 1; 
-		if (disable) curStatus = WL_DISCONNECTED; 
-		return curStatus; 
-	} 
+	int status();
 	IPAddress localIP() { return IPAddress(); } 
 	void setSleep(bool) {}
 	void mode(int) {}
@@ -652,7 +601,9 @@ struct FakeWiFi {
 	void disconnect() {}
 	void reconnect() {}
 	String macAddress() { return String("DEADBEEFFF"); }
-} WiFi;
+};
+
+extern FakeWiFi WiFi;
 
 class WiFiClientSecure {
 	public:
@@ -756,9 +707,6 @@ public:
 		return 200;
 	}
 };
-vector<HTTPClient::postHookInfo> HTTPClient::csim_hooks = {
-	{".*", true, HTTPClient::csim_defaultOnPOST },
-	{".*", false, HTTPClient::csim_defaultOnGET }};
 
 #define PROGMEM 
 
@@ -812,7 +760,8 @@ class FakeSD {
 	public:
 	bool begin(int, int, int, int) { return true; }
 	fs::File open(const char *) { return fs::File(); } 
-} SD;
+};
+extern FakeSD SD;
 
 class WiFiMulti {
 public:
@@ -875,10 +824,7 @@ struct FakePinger {
 
 typedef FakePinger Pinger;
 
-// TODO: extend this to use vector<unsigned char> to handle binary data	
-WiFiUDP::InputMap WiFiUDP::inputMap;
-
-void ESP32sim_udpInput(int p, const WiFiUDP::InputData &s) { 
+static inline void ESP32sim_udpInput(int p, const WiFiUDP::InputData &s) { 
 	WiFiUDP::InputMap &m = WiFiUDP::inputMap;
 	if (m.find(p) == m.end())
 		m[p] = s;
@@ -886,7 +832,7 @@ void ESP32sim_udpInput(int p, const WiFiUDP::InputData &s) {
 		m[p].insert(m[p].end(), s.begin(), s.end());
 }
 
-void ESP32sim_udpInput(int p, const string &s) {
+static inline void ESP32sim_udpInput(int p, const string &s) {
 	ESP32sim_udpInput(p, WiFiUDP::InputData(s.begin(), s.end()));
 } 
 
@@ -908,7 +854,9 @@ public:
 	void begin(int, int) {}
 	void beginTransmission(int) {}
 	bool endTransmission() { return false; }
-} Wire;
+};
+
+extern FakeWire Wire;
 
 #define ESP_MAC_WIFI_STA 0
 #define ESP_OK 0 
@@ -936,18 +884,17 @@ typedef struct {
 
 #define WIFI_INIT_CONFIG_DEFAULT() {0}
 typedef struct { uint8_t *src_addr; } esp_now_recv_info;
-
 typedef void (*esp_now_recv_cb_t)(const uint8_t *mac_addr, const uint8_t *data, int data_len);
 typedef void (*esp_now_recv_cb_t_v3)(const esp_now_recv_info *info, const uint8_t *data, int data_len);
 typedef void (*esp_now_send_cb_t)(const uint8_t *mac_addr, esp_now_send_status_t status);
-esp_now_send_cb_t ESP32_esp_now_send_cb = NULL;
-esp_now_recv_cb_t ESP32_esp_now_recv_cb = NULL;
 
 class ESPNOW_csimInterface {
 public:
 	virtual void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) = 0;
 };
-ESPNOW_csimInterface *ESPNOW_sendHandler = NULL;
+extern ESPNOW_csimInterface *ESPNOW_sendHandler;
+extern esp_now_send_cb_t ESP32_esp_now_send_cb;
+extern esp_now_recv_cb_t ESP32_esp_now_recv_cb;
 
 // ESPNOW_csimOneProg: lightweight ESPNOW simluation framework where 
 // one sketch creates both a client and server object and calls them 
@@ -1022,34 +969,34 @@ public:
 	} 
 };
 
-int esp_wifi_internal_set_fix_rate(int, int, int) { return ESP_OK; } 
-int esp_now_register_recv_cb(void *) { return ESP_OK; }	
-int esp_now_register_send_cb( void *) { return ESP_OK; }
-int esp_now_init() { return ESP_OK; } 
-int esp_now_deinit() { return ESP_OK; } 
-int esp_now_add_peer(void *) { return ESP_OK; } 
-int esp_wifi_stop() { return ESP_OK; } 
-int esp_wifi_deinit() { return ESP_OK; } 
-int esp_wifi_init(wifi_init_config_t *) { return ESP_OK; } 
-int esp_wifi_start() { return ESP_OK; } 
-int esp_wifi_set_channel(int, int) { return ESP_OK; } 
-int esp_now_register_send_cb(esp_now_send_cb_t cb) { ESP32_esp_now_send_cb = cb; return ESP_OK; }
-int esp_now_register_recv_cb(esp_now_recv_cb_t cb) { ESP32_esp_now_recv_cb = cb; return ESP_OK; }
-int esp_now_register_recv_cb(esp_now_recv_cb_t_v3 cb) { return ESP_OK; }
-int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
+static inline int esp_wifi_internal_set_fix_rate(int, int, int) { return ESP_OK; } 
+static inline int esp_now_register_recv_cb(void *) { return ESP_OK; }	
+static inline int esp_now_register_send_cb( void *) { return ESP_OK; }
+static inline int esp_now_init() { return ESP_OK; } 
+static inline int esp_now_deinit() { return ESP_OK; } 
+static inline int esp_now_add_peer(void *) { return ESP_OK; } 
+static inline int esp_wifi_stop() { return ESP_OK; } 
+static inline int esp_wifi_deinit() { return ESP_OK; } 
+static inline int esp_wifi_init(wifi_init_config_t *) { return ESP_OK; } 
+static inline int esp_wifi_start() { return ESP_OK; } 
+static inline int esp_wifi_set_channel(int, int) { return ESP_OK; } 
+static inline int esp_now_register_send_cb(esp_now_send_cb_t cb) { ESP32_esp_now_send_cb = cb; return ESP_OK; }
+static inline int esp_now_register_recv_cb(esp_now_recv_cb_t cb) { ESP32_esp_now_recv_cb = cb; return ESP_OK; }
+static inline int esp_now_register_recv_cb(esp_now_recv_cb_t_v3 cb) { return ESP_OK; }
+static inline int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
 	if (ESP32_esp_now_send_cb != NULL)
 		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 
 	if (ESPNOW_sendHandler != NULL) 
 		ESPNOW_sendHandler->send(mac, data, len); 
 	return ESP_OK; 
 }
-int esp_wifi_config_espnow_rate(int, int) { return ESP_OK; }
+static inline int esp_wifi_config_espnow_rate(int, int) { return ESP_OK; }
 
 #define INV_SUCCESS 1
 #define INV_XYZ_GYRO 1
 #define INV_XYZ_ACCEL 1
 #define INV_XYZ_COMPASS 0
-const int ACC_FULL_SCALE_4_G = 0, GYRO_FULL_SCALE_250_DPS = 0, MAG_MODE_CONTINUOUS_100HZ = 0;
+static const int ACC_FULL_SCALE_4_G = 0, GYRO_FULL_SCALE_250_DPS = 0, MAG_MODE_CONTINUOUS_100HZ = 0;
 
 class MPU9250_DMP {
 public:
@@ -1113,7 +1060,9 @@ struct Update_t {
 		return true; 
 	}
 	const char *errorString() { return "Update error"; }
-} Update;
+};
+
+extern Update_t Update;
 
 class HTTPUpload {
 public:
@@ -1210,7 +1159,8 @@ public:
 	}
   }
   
-} CAN;
+};
+extern FakeCAN CAN;
 
 struct RTC_DS3231 {
 };
@@ -1247,29 +1197,21 @@ public:
 void setup(void);
 void loop(void);
 
-void ESP32sim_exit() { 	esp32sim.exit(); }
 
-inline ESP32sim_Module::ESP32sim_Module() { 
-	esp32sim.modules.push_back(this);
-}
+int main(int argc, char **argv);
 
-int main(int argc, char **argv) {
-	esp32sim.main(argc, argv);
-}
-
-struct csim_DHTSimulator { 
-	map<int,float> temp, humidity;
-	void csim_set(int pin, float t, float h) { temp[pin] = t; humidity[pin] = h; }
-	float getTemp(int pin) { return temp[pin]; }
-	float getHumidity(int pin) { return humidity[pin]; }
-} csim_dht;
 
 struct DHT {
+	struct Csim { 
+		map<int,float> temp, humidity;
+		void set(int pin, float t, float h) { temp[pin] = t; humidity[pin] = h; }
+	};
+	static Csim csim;
 	int pin;
-    DHT(int p , int) : pin(p) { csim_dht.csim_set(pin, 22.22, 77.77); } 
+    DHT(int p , int) : pin(p) {} // static init order disaster { csim.set(pin, 22.22, 77.77); } 
 	void begin() {}
-    float readTemperature(bool t = false, bool f = false) { return csim_dht.getTemp(pin); }
-    float readHumidity(bool f = false) { return csim_dht.getHumidity(pin); }
+    float readTemperature(bool t = false, bool f = false) { return csim.temp[pin]; }
+    float readHumidity(bool f = false) { return csim.humidity[pin]; }
 };
 
 #define DHT22 0
@@ -1277,99 +1219,5 @@ struct DHT {
 
 #define ESP_ARDUINO_VERSION_STR "1.1.1"
 
-
-void ESP32sim::main(int argc, char **argv) {
-	this->argc = argc;
-	this->argv = argv;
-	Serial.toConsole = true;
-	int showargs = 0;
-	for(char **a = argv + 1; a < argv+argc; a++) {
-		if (strcmp(*a, "--serial") == 0) {
-			printf("--serial is depricated, use --serialConsole\n");
-			::exit(-1);
-		}
-		else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
-		else if (strcmp(*a, "--wifi-errors") == 0) sscanf(*(++a), "%d", &WiFi.simulatedFailMinutes); 
-		else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%lf", &seconds); 
-		else if (strcmp(*a, "--boot-time") == 0) sscanf(*(++a), "%ld", &bootTimeUsec); 
-		else if (strcmp(*a, "--show-args") == 0) showargs = 1; 
-		else if (strcmp(*a, "--reset-reason") == 0) sscanf(*(++a), "%d", &resetReason); 
-		else if (strcmp(*a, "--mac") == 0) { 
-			sscanf(*(++a), "%lx", &csim_mac);
-		} else if (strcmp(*a, "--espnowPipe") == 0) { 
-			ESPNOW_sendHandler= new ESPNOW_csimPipe(*(++a), *(++a));
-		} else if (strcmp(*a, "--espnowOneProg") == 0) { 
-			ESPNOW_sendHandler= new ESPNOW_csimOneProg();
-			csim_flags.OneProg = true;
-		} else if (strcmp(*a, "--interruptFile") == 0) { 
-			intMan.setInterruptFile(*(++a));
-		} else if (strcmp(*a, "--button") == 0) {
-					int pin, clicks = 1, longclick = 0;
-					float tim;
-					sscanf(*(++a), "%f,%d,%d,%d", &tim, &pin, &clicks, &longclick);
-					ESP32sim_pinManager::manager->addPress(pin, tim, clicks, longclick);
-		} else if (strcmp(*a, "--serialInput") == 0) {
-			float seconds;
-			sscanf(*(++a), "%f", &seconds);
-			Serial.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
-		
-		} else if (strcmp(*a, "--serial2Input") == 0) {
-			float seconds;
-			sscanf(*(++a), "%f", &seconds);
-			Serial2.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
-		} else for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
-			(*it)->parseArg(a, argv + argc);
-		}
-	}
-	if (showargs) { 
-		printf("args: ");
-			for(char **a = argv; a < argv+argc; a++) 
-				printf("%s ", *a);
-		printf("\n");
-	}
-	
-	for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
-		(*it)->setup();
-	setup();
-
-	uint64_t lastMillis = 0;
-	while(seconds <= 0 || _micros / 1000000.0 < seconds) {
-		uint64_t now = millis();
-		//for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
-		for(auto it : modules) {
-			it->loop();
-		}
-		loop();
-		intMan.run();
-
-		//if (floor(now / 1000) != floor(lastMillis / 1000)) { 
-		//	ESP32sim_JDisplay_forceUpdate();	
-		//}
-		lastMillis = now;
-	}
-}
-void ESP32sim::exit() { 
-	for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
-		(*it)->done();	
-	::exit(0);
-}
-void ESP32sim::delayMicroseconds(long long us) { 
-	do {
-		int step = min(100000LL, us);
-		_micros += step;
-		for(auto it : modules) {
-			it->loop();
-		}
-		intMan.run();
-		us -= step;
-		if (esp32sim.seconds > 0 && micros() / 1000000.0 > esp32sim.seconds)
-			ESP32sim_exit();
-	} while(us > 0);
-}
-
-void delayMicroseconds(int m) { esp32sim.delayMicroseconds(m); }
-
-uint32_t micros() { return _microsMax > 0 ? ++_micros & _microsMax : ++_micros; }
-uint32_t millis() { return ++_micros / 1000; }
 
 #endif // #ifdef _ESP32SIM_UBUNTU_H_

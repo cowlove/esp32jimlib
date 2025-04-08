@@ -13,8 +13,7 @@
 #ifndef CSIM
 #include "ArduinoOTA.h"
 #include "WiFiUdp.h"
-
-
+#include "driver/adc.h"
 
 // starting jimlib.cpp cleanup
 // Sketch uses 1346572 bytes (68%) of program storage space. Maximum is 1966080 bytes.
@@ -948,10 +947,18 @@ inline float random01() { 	return rand() / (RAND_MAX + 1.0); }
 #endif
 
 
-static inline float avgAnalogRead(int pin, int avg = 1024) { 
+static inline float avgAnalogRead(int p, int avg = 1024) { 
 	float bv = 0;
+	pinMode(p, INPUT);
 	for (int i = 0; i < avg; i++) {
-		bv += analogRead(pin);
+#ifdef ARDUINO_ESP32S3_DEV
+		if (p == 1) bv += adc1_get_raw(ADC1_CHANNEL_0);
+		if (p == 2) bv += adc1_get_raw(ADC1_CHANNEL_1);
+		if (p == 3) bv += adc1_get_raw(ADC1_CHANNEL_2);
+		if (p == 4) bv += adc1_get_raw(ADC1_CHANNEL_3);
+#else
+		bv += analogRead(p);
+#endif
 	}
 	return bv / avg;
 }
@@ -1482,7 +1489,4 @@ public:
 
 
 //#endif
-#ifdef CSIM
-#include "jimlib.cpp"
-#endif
 #endif //#ifndef INC_JIMLIB_H

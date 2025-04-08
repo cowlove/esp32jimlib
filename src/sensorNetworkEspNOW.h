@@ -1,13 +1,14 @@
 #ifndef __SENSORNETWORKESPNOW_H_
 #define __SENSORNETWORKESPNOW_H_
+#include "jimlib.h"
 #include "espNowMux.h"
 #include "reliableStream.h"
 #include "Arduino_CRC32.h" 
+
 #ifndef CSIM
 #include "DHT.h"
 #endif
 
-#include "jimlib.h"
 
 using std::string;
 using std::vector;
@@ -69,14 +70,14 @@ public:
 class SchemaParser : protected RemoteSensorProtocol { 
 public:
     typedef Sensor *(*ParserFunc)(const string &);
-    static vector<ParserFunc> parserList;
+    static vector<ParserFunc> &parserList();
 
     static vector<Sensor *> parseSchema(const string &s) {
         vector<Sensor *> rval; 
         for (auto w : split(s, ' ')) { 
             string name = w.substr(0, w.find("="));
             string sch = w.substr(w.find("=") + 1); 
-            for(auto i : parserList) { 
+            for(auto i : parserList()) { 
                 Sensor *p = i(sch);
                 if (p) {
                     p->name = name;
@@ -88,10 +89,9 @@ public:
         return rval;
     }
     struct RegisterClass { 
-        RegisterClass(ParserFunc a) { parserList.push_back(a); }
+        RegisterClass(ParserFunc a) { parserList().push_back(a); }
     };
 };
-vector<SchemaParser::ParserFunc> SchemaParser::parserList;
 
 class RemoteSensorServer;
 class RemoteSensorClient;
@@ -231,9 +231,6 @@ public:
     float read() { return parent->read(key); }  
 };
 
-Sensor::Sensor(RemoteSensorModule *parent /*= NULL*/, std::string n /*= ""*/) : name(n) {
-    if (parent) parent->addSensor(this);
-}
 
 class SensorSchemaHash : public Sensor { 
 public:
@@ -243,7 +240,7 @@ public:
     string makeReport() { return result; }
     static SchemaParser::RegisterClass reg;
 };
-SchemaParser::RegisterClass SensorSchemaHash::reg([](const string &s)->Sensor * { 
+inline SchemaParser::RegisterClass SensorSchemaHash::reg([](const string &s)->Sensor * { 
     return s == "SCHASH" ? new SensorSchemaHash(NULL) : NULL; 
 });
 
@@ -255,7 +252,7 @@ class SensorMillis : public Sensor {
         string makeReport() { return sfmt("%d", millis()); }
         static SchemaParser::RegisterClass reg;
 };
-SchemaParser::RegisterClass SensorMillis::reg([](const string &s)->Sensor * { 
+inline SchemaParser::RegisterClass SensorMillis::reg([](const string &s)->Sensor * { 
     return s == "MILLIS" ? new SensorMillis(NULL) : NULL; 
 });
     
@@ -266,7 +263,7 @@ public:
     string makeReport() { return result; }
     static SchemaParser::RegisterClass reg;
 };
-SchemaParser::RegisterClass SensorMAC::reg([](const string &s)->Sensor * { 
+inline SchemaParser::RegisterClass SensorMAC::reg([](const string &s)->Sensor * { 
     return s == "MAC" ? new SensorMAC(NULL) : NULL; 
 });
     
@@ -277,7 +274,7 @@ public:
     string makeReport() { return string(GIT_VERSION); }
     static SchemaParser::RegisterClass reg;
 };
-SchemaParser::RegisterClass SensorGit::reg([](const string &s)->Sensor * { 
+inline SchemaParser::RegisterClass SensorGit::reg([](const string &s)->Sensor * { 
     return s == "GIT" ? new SensorGit(NULL) : NULL; 
 });
     
@@ -290,7 +287,7 @@ public:
     string makeReport() { return sfmt("%f", avgAnalogRead(pin, 1024) * scale); }
     static SchemaParser::RegisterClass reg;
 };
-SchemaParser::RegisterClass SensorADC::reg([](const string &s)->Sensor * { 
+inline SchemaParser::RegisterClass SensorADC::reg([](const string &s)->Sensor * { 
     float pin, scale;
     if (sscanf(s.c_str(), "ADC%f*%f", &pin, &scale) == 2) 
         return new SensorADC(NULL, "", pin, scale);
@@ -344,7 +341,7 @@ public:
     static SchemaParser::RegisterClass reg;
 };
 
-SchemaParser::RegisterClass SensorDHT::reg([](const string &s)->Sensor * { 
+inline SchemaParser::RegisterClass SensorDHT::reg([](const string &s)->Sensor * { 
     int pin;
     if (sscanf(s.c_str(), "DHT%d", &pin) == 1) 
         return new SensorDHT(NULL, "", pin);
@@ -365,7 +362,7 @@ public:
     string makeReport() { return sfmt("%d", digitalRead(pin)); }
     static SchemaParser::RegisterClass reg;
 };
-SchemaParser::RegisterClass SensorInput::reg([](const string &s)->Sensor * { 
+inline SchemaParser::RegisterClass SensorInput::reg([](const string &s)->Sensor * { 
     int pin, mode = INPUT;
     if (sscanf(s.c_str(), "INPUT%d", &pin) == 1) {
         if (strstr(s.c_str(), "PU") != NULL) mode = INPUT_PULLUP;
@@ -395,7 +392,7 @@ public:
     }
     static SchemaParser::RegisterClass reg;
 };
-SchemaParser::RegisterClass SensorOutput::reg([](const string &s)->Sensor * { 
+inline SchemaParser::RegisterClass SensorOutput::reg([](const string &s)->Sensor * { 
     int pin, mode;
     if (sscanf(s.c_str(), "OUTPUT%d,%d", &pin, &mode) == 2) {
         return new SensorOutput(NULL, "", pin, mode);
@@ -419,7 +416,7 @@ public:
     }
     static SchemaParser::RegisterClass reg;
 };
-SchemaParser::RegisterClass SensorVariable::reg([](const string &s)->Sensor * { 
+inline SchemaParser::RegisterClass SensorVariable::reg([](const string &s)->Sensor * { 
     char txt[256];
     if (sscanf(s.c_str(), "VAR,%s", txt) == 1) {
         return new SensorVariable(NULL, "", txt);
@@ -477,37 +474,8 @@ class RemoteSensorServer : public RemoteSensorProtocol {
     uint32_t lastReportTs = 0;
 
     bool initialized = false;
-    void checkInit() {
-        if (initialized == true) return;
-        initialized = true;
-        if (getResetReason(0) != 5) {
-            lastSynchTs.set(synchPeriodMin * 60 * 1000);
-            sensorsCompleteOnSleep = false;
-        }
-        vector<string> v = spiffResultLog;
-        for(auto s : v) {
-            std::map<string, string> in = parseLine(s);
-            for(auto p : modules) { 
-                if (p->mac == "auto" && in.find(specialWords.MAC) != in.end())
-                    p->mac = in[specialWords.MAC];
-                if (p->mac == in[specialWords.MAC]) {
-                    string hash = p->makeHash();
-                    if (in[specialWords.SCHASH] == hash) { 
-                        p->parseAllResults(s);
-                    }
-                }
-            }
-        }
-        for(auto p : modules) 
-            p->seen = sensorsCompleteOnSleep;
-        sensorsCompleteOnSleep = false;
-        //if (spiffsResumeSleepMs > 0) {
-        //    for(auto p : modules) 
-        //        p->seen = true;
-        //    nextSleepTimeMs = millis() + spiffsResumeSleepMs;
-        //    spiffsResumeSleepMs = 0;
-        //}
-    }
+    void checkInit();
+    
 public: 
     //int serverSleepSeconds = 90;
     //int serverSleepLinger = 10;
@@ -517,158 +485,15 @@ public:
     float clientTimeoutZeroTrafficMin = -1; /* < 0 never timeout for zero clients */
     float earlyWakeupSec = 5;
 
-    int countSeen() { 
-        int rval = 0;
-        for(auto p : modules) { 
-            if (p->seen) rval++;
-        }
-        return rval;
-    }
-    float lastTrafficSec() { 
-        return (lastSynchTs.elapsed()) / 1000.0;
-    }
- 
-    RemoteSensorServer(vector<RemoteSensorModule *> m) : modules(m) {
-        // BAD hack to resume values after deep sleep - replay log of last received valid data lines
-    }    
-    void prepareSleep(int ms) {
-        lastSynchTs.prepareSleep(ms);
-        sensorsCompleteOnSleep = (countSeen() == modules.size());
-    }
-    void onReceive(const string &s) {
-        checkInit();
-        if (s.find(specialWords.ACK) == 0) 
-            return;
-        string incomingMac = "", incomingHash = "";
-        std::map<string, string> in = parseLine(s);
-        incomingMac = in[specialWords.MAC];
-        incomingHash = in[specialWords.SCHASH];
-        if (in.find(specialWords.SERVER) != in.end()) return;
-
-        float late = lastLastSynchTs.elapsed() / 1000.0 - synchPeriodMin * 60;
-        printf("%09.3f %09.3f server <<<< %s (%.3fs late)\n", 
-            deepsleepMs.millis() / 1000.0, millis() / 1000.0, s.c_str(), 
-            late);
-
-        bool packetHandled = false;
-        for(auto p : modules) { 
-            if (p->mac == incomingMac) {
-                packetHandled = true;
-                string hash = p->makeHash();
-
-                if (in[specialWords.SCHASH] != hash) { 
-                    string out = "SERVER=1 MAC=" + p->mac + " NEWSCHEMA=1 " + p->makeAllSchema();
-                    write(out);
-                    return;
-                }
-
-                for(auto w : split(s, ' ')) { 
-                    string name = w.substr(0, w.find("="));
-                    string val = w.substr(w.find("=") + 1);
-                    if (name == "SCHASH") {
-                        if (hash != val) { 
-                            string out = "SERVER=1 MAC=" + p->mac + " NEWSCHEMA=1 " + p->makeAllSchema();
-                            write(out);
-                            return;
-                        }
-                    } else if (0) { 
-                        string out = "SERVER=1 MAC=" + p->mac + " UPDATENOW=1 ...";
-                        write(out);
-                    } else if (name == "ENDLINE") {
-                        break; 
-                    }
-                }
-                if (hash == incomingHash) {
-                    if (countSeen() == 0) { // first sensor? reset synch period 
-                        lastLastSynchTs.set(lastSynchTs.millis());
-                        lastSynchTs.reset();
-                    } 
-                    p->seen = true;
-                    lastReportTs = millis();
-                    p->parseAllResults(s);
-                    int moduleSleepSec = ((synchPeriodMin * 60 * 1000) - lastSynchTs.elapsed()) / 1000; 
-                    //int moduleSleepSec = (nextSleepTimeMs - millis()) / 1000;
-                    //if (moduleSleepSec > serverSleepSeconds)
-                    //    moduleSleepSec = serverSleepSeconds;;
-                    string out = "SERVER=1 MAC=" + p->mac + " SCHASH=" + hash + " SLEEP=" 
-                        + sfmt("%d ", moduleSleepSec) + p->makeAllSetValues();
-                    write(out);
-                    // HACK - keep rolling log of good data lines to replay after a deep sleep
-                    vector<string> log = spiffResultLog;
-                    log.push_back(s);
-                    if (log.size() > modules.size() * 3)
-                        log.erase(log.begin());
-                    spiffResultLog = log;
-                } else {
-                    printf("HASH: %s != %s\n", incomingHash.c_str(), hash.c_str());
-                }
-            }
-        }
-        if (!packetHandled && incomingMac != "") { 
-            printf("Unknown MAC: %s\n", s.c_str());
-            for(auto p : modules) { 
-                if (p->mac == "auto") {
-                    p->mac = incomingMac;
-                    string schema = p->makeAllSchema();
-                    printf("Auto assigning incoming mac %s to sensor %s\n", p->mac.c_str(), schema.c_str());
-                    onReceive(s);
-                    break;
-                }
-            }
-        }
-    }
-
-    void write(const string &s) { 
-        printf("%09.3f %09.3f server >>>> %s\n", deepsleepMs.millis()/1000.0, millis() / 1000.0, s.c_str());
-        fakeEspNow.write(s);
-    }
-
-    void begin() { 
-        // set up ESPNOW, register this->onReceive() listener 
-    }
-    void run() {
-        checkInit();
-        if (lastSynchTs.elapsed() > ((synchPeriodMin * 60) - earlyWakeupSec) * 1000) { 
-            lastLastSynchTs.set(lastSynchTs.millis()); // use for measuring/debugging
-            lastSynchTs.reset();
-            for(auto p : modules) p->seen = false;  // resets countSeen() below
-        } 
-string in = fakeEspNow.read();
-        if (in != "") 
-            onReceive(in);
-        static HzTimer timer(.1);
-        if (timer.tick()) { 
-            //printf("%09.3f Seen %d/%d modules, last traffic %d sec ago\n",
-            // millis() / 1000.0, countSeen(), (int)modules.size(), (int)(millis() - lastReportMs) / 1000);
-        }
-        //if (countSeen() > 0 && (nextSleepTimeMs - millis()) / 1000 > serverSleepSeconds) {
-        //    // missing some sensors but the entire sleep period has elapsed?  Just reset to next sleep Period 
-        //    nextSleepTimeMs = millis() + serverSleepSeconds * 1000;
-        //    lastReportMs = millis();                
-        //}
-    }
-
-    float getSleepRequest() { // rename to getSleepRequestSec()
-        checkInit();
-        float sleepSec = -1;
-        float newSleepSec = synchPeriodMin * 60 - earlyWakeupSec - lastSynchTs.elapsed() / 1000.0;  
-        float lastSynchAgeMin = lastSynchTs.elapsed() / 1000.0 / 60.0;
-        
-        if (0) { 
-            printf("%09.3f %09.3f lastSynchTs %d, lastSynchAge %.2f sleepSec %.2f countSeen %d modules %d\n", 
-                millis()/1000.0, deepsleepMs.millis()/1000.0, (int)lastSynchTs.elapsed(), lastSynchAgeMin, newSleepSec, countSeen(), (int)modules.size());
-        }
-        if (countSeen() == 0 && clientTimeoutZeroTrafficMin > 0 
-            && lastSynchAgeMin > synchPeriodMin + clientTimeoutZeroTrafficMin)
-            sleepSec = newSleepSec;
-        if (countSeen() > 0 && countSeen() < modules.size() && lastSynchAgeMin > clientTimeoutSec / 60)
-            sleepSec = newSleepSec;
-        if (countSeen() == modules.size() && lastSynchAgeMin > lingerSec / 60)
-            sleepSec = newSleepSec;
-        
-        if (sleepSec < 0) sleepSec = -1;
-        return sleepSec;  
-    }
+    int countSeen();
+    float lastTrafficSec();
+    RemoteSensorServer(vector<RemoteSensorModule *> m);
+    void prepareSleep(int ms);
+    void onReceive(const string &s);
+    void write(const string &s);    
+    //void begin();
+    void run();
+    float getSleepRequest();
 };
 
 class RemoteSensorClient : public RemoteSensorProtocol { 
@@ -677,139 +502,20 @@ class RemoteSensorClient : public RemoteSensorProtocol {
     RemoteSensorModule *array = NULL;
     SPIFFSVariable<int> *lastChannel = NULL, *sleepRemainingMs;
     SPIFFSVariable<string> *lastSchema = NULL;
-    uint32_t inhibitStartMs, inhibitMs = 0;
+    uint32_t inhibitStartMs, lastReceive = 0, inhibitMs = 0;
     bool deepSleep = true;
 public:
+    RemoteSensorClient();
     bool channelHop = false;
-    void csimOverrideMac(const string &s) { 
-        mac = s;
-        init();
-        deepSleep = false;
-    } 
-    Sensor *findByName(const char *n) { 
-        return array == NULL ? NULL : array->findByName(n);
-    }
-    RemoteSensorClient() { 
-        init();
-    }
-    void init(const string &schema = "") { 
-        if (array != NULL) {
-            delete array;
-            delete lastChannel;
-            delete lastSchema;
-            delete sleepRemainingMs;
-        }
-        lastChannel = new SPIFFSVariable<int>(("/sn_lc_" + mac).c_str(), 1);
-        lastSchema = new SPIFFSVariable<string>(("/sn_ls_" + mac).c_str(), "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
-        sleepRemainingMs = new SPIFFSVariable<int>(("/sn_sr_" + mac).c_str(), 0);
-        if (schema != "")
-            *lastSchema = schema;
-        string s = *lastSchema;
-        array = new RemoteSensorModule(mac.c_str(), s.c_str());
-        array->beginClient();
-        espNowMux.defaultChannel = *lastChannel; 
-        if (*sleepRemainingMs > 0) { // look if setPartialDeepSleep() was called, resume sleeping
-            inhibitStartMs = millis();
-            inhibitMs = (int)*sleepRemainingMs;
-            *sleepRemainingMs = 0;
-        } else { 
-            inhibitMs = inhibitStartMs = 0; // otherwise start cycle right now
-        }
-        lastReceive = millis();
-    }
-    void updateFirmware() {
-        // TODO
-    }
-    bool updateFirmwareNow = false, updateSchemaNow = false;
-    uint32_t lastReceive = 0;
-    void onReceive(const string &s) { 
-        LineMap in = parseLine(s);
-        if (in.contains(specialWords.ACK)) return;
-        if (in.contains(specialWords.SERVER) == false) return;
-        
-        string schash, newSchema;
-        bool updatingSchema = false;   
-        int sleepTime = -1;     
-        for(auto w : split(s, ' ')) { 
-            if (updatingSchema) {
-                newSchema += w + " ";
-            } else { 
-                string name = w.substr(0, w.find("="));
-                string val = w.substr(w.find("=") + 1);
-                if (name == "MAC") {
-                    if (val != mac) return;
-                    *lastChannel = espNowMux.defaultChannel;
-                    lastReceive = millis();
-                }
-                else if (name == "NEWSCHEMA") updatingSchema = true;
-                else if (name == "UPDATENOW") updateFirmware();
-                else if (name == "SLEEP") sscanf(val.c_str(), "%d", &sleepTime);
-            }
-        }
-        printf("%09.3f client <<<< %s\n", millis() / 1000.0, s.c_str());
-        if (updatingSchema) { 
-            printf("Got new schema: %s\n", newSchema.c_str());
-            init(newSchema);
-            string out = array->makeAllResults();
-            write(out);
-            return;
-        }
-        if (array)
-            array->parseAllSetValues(s);
-        // TODO:  Write schema and shit to SPIFF
-        if (sleepTime > 0) { 
-            if (deepSleep) { 
-                printf("%09.3f: Sleeping %d seconds...\n", millis() / 1000.0, sleepTime);
-                WiFi.disconnect(true);  // Disconnect from the network
-                WiFi.mode(WIFI_OFF);    // Switch WiFi off
-                int rc = esp_sleep_enable_timer_wakeup(1000000LL * sleepTime);
-                Serial.flush();
-                //esp_light_sleep_start();                                                                 
-                esp_deep_sleep_start();
-                //delay(1000 * sleepTime);                                                                 
-                ESP.restart();                                 
-            } else { 
-                inhibitStartMs = millis();
-                inhibitMs = sleepTime * 1000;
-            } 
-        }
-    }
-    void write(const string &s) { 
-        printf("%09.3f client >>>> %s\n", millis() / 1000.0, s.c_str());
-        fakeEspNow.write(s);
-    }
-    void run() {
-        string in = fakeEspNow.read();
-        if (in != "") 
-            onReceive(in);
-            
-        if (inhibitMs > 0) { 
-            if (millis() - inhibitStartMs > inhibitMs) { 
-                init();
-            }
-        } else { 
-            static HzTimer timer(.6, true);
-            if (array != NULL && timer.secTick(1.0)) { 
-                string out = array->makeAllResults() + "ENDLINE=1 ";
-                write(out);
-            }
-            // channel hopping
-            if (channelHop == true && millis() - lastReceive > 10000) {
-                espNowMux.defaultChannel = (espNowMux.defaultChannel + 1) % 14;
-                espNowMux.stop();
-                espNowMux.firstInit = true;
-                lastReceive = millis();
-            }
-        }
-    }
-    void setPartialDeepSleep(uint64_t usec) {
-        int remainMs = inhibitMs - (millis() - inhibitStartMs) - usec / 1000;
-        remainMs = max(0, remainMs);
-        *sleepRemainingMs = remainMs;
-    }
+    void csimOverrideMac(const string &s);
+    Sensor *findByName(const char *n);
+    void init(const string &schema = "");
+    void updateFirmware();
+    void onReceive(const string &s);
+    void write(const string &s);
+    void run();
+    void setPartialDeepSleep(uint64_t usec);
 };
-
-
 
 //static SchemaList::Register();
 #endif //__SENSORNETWORKESPNOW_H_

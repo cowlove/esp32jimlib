@@ -47,9 +47,9 @@ InterruptManager intMan;
 FakeESP ESP;
 FakeArduinoOTA ArduinoOTA;
 FakeSPIFFS SPIFFS, LittleFS;
-ESP32sim *esp32sim() { 
-	static ESP32sim *p = new ESP32sim();
-	return p;
+ESP32sim &esp32sim() { 
+	static ESP32sim *staticFirstUse = new ESP32sim();
+	return *staticFirstUse;
 }
 FakeWiFi WiFi;
 FakeSD SD;
@@ -59,15 +59,15 @@ FakeCAN CAN;
 DHT::Csim DHT::csim;
 ESP32sim_flags csim_flags;
 
-void ESP32sim_exit() { 	esp32sim()->exit(); }
+void ESP32sim_exit() { 	esp32sim().exit(); }
 
 uint64_t sleep_timer = 0;
 vector<deepSleepHookT> deepSleepHooks;
 void onDeepSleep(deepSleepHookT func) { deepSleepHooks.push_back(func); }
 void esp_deep_sleep_start() {
 	double newRunSec = -1;
-	if (esp32sim()->seconds >= 0) {
-		newRunSec = esp32sim()->seconds - (sleep_timer + _micros) / 1000000;
+	if (esp32sim().seconds >= 0) {
+		newRunSec = esp32sim().seconds - (sleep_timer + _micros) / 1000000;
 		if (newRunSec < 0) { 
 			fflush(stdout);
 			ESP32sim_exit();
@@ -77,7 +77,7 @@ void esp_deep_sleep_start() {
 	for (auto i : deepSleepHooks) i(sleep_timer);
 	char *argv[128];
 	int argc = 0; 
-	for(char *const *p = esp32sim()->argv; *p != NULL; p++) {
+	for(char *const *p = esp32sim().argv; *p != NULL; p++) {
 		if (strcmp(*p, "--boot-time") == 0) p++;
 		else if (strcmp(*p, "--seconds") == 0) p++;
 		else if (strcmp(*p, "--reset-reason") == 0) p++;
@@ -85,7 +85,7 @@ void esp_deep_sleep_start() {
 		else argv[argc++] = *p;
 	}
 	char bootTimeBuf[32], secondsBuf[32];
-	snprintf(bootTimeBuf, sizeof(bootTimeBuf), "%ld", esp32sim()->bootTimeUsec + sleep_timer + _micros);
+	snprintf(bootTimeBuf, sizeof(bootTimeBuf), "%ld", esp32sim().bootTimeUsec + sleep_timer + _micros);
 	argv[argc++] = (char *)"--boot-time";
 	argv[argc++] = bootTimeBuf; 
 	snprintf(secondsBuf, sizeof(secondsBuf), "%f", newRunSec);
@@ -100,7 +100,7 @@ void esp_deep_sleep_start() {
 void esp_light_sleep_start() {
 	delayMicroseconds(0); // run csim hooks 
 	_micros += sleep_timer; 
-	if (esp32sim()->seconds > 0 && micros() / 1000000.0 > esp32sim()->seconds)
+	if (esp32sim().seconds > 0 && micros() / 1000000.0 > esp32sim().seconds)
 		ESP32sim_exit();
 } 
 
@@ -117,11 +117,11 @@ vector<HTTPClient::postHookInfo> HTTPClient::csim_hooks = {
 WiFiUDP::InputMap WiFiUDP::inputMap;
 
 ESP32sim_Module::ESP32sim_Module() { 
-	esp32sim()->modules.push_back(this);
+	esp32sim().modules.push_back(this);
 }
 
 int main(int argc, char **argv) {
-	esp32sim()->main(argc, argv);
+	esp32sim().main(argc, argv);
 }
 
 
@@ -209,20 +209,20 @@ void ESP32sim::delayMicroseconds(long long us) {
 		}
 		intMan.run();
 		us -= step;
-		if (esp32sim()->seconds > 0 && micros() / 1000000.0 > esp32sim()->seconds)
+		if (esp32sim().seconds > 0 && micros() / 1000000.0 > esp32sim().seconds)
 			ESP32sim_exit();
 	} while(us > 0);
 }
 
-void delayMicroseconds(int m) { esp32sim()->delayMicroseconds(m); }
+void delayMicroseconds(int m) { esp32sim().delayMicroseconds(m); }
 
 uint32_t micros() { return _microsMax > 0 ? ++_micros & _microsMax : ++_micros; }
 uint32_t millis() { return ++_micros / 1000; }
-int rtc_get_reset_reason(int) { return esp32sim()->resetReason; } 
+int rtc_get_reset_reason(int) { return esp32sim().resetReason; } 
 
 int FakeWiFi::status() {
    bool disable = simulatedFailMinutes > 0 && 
-	   ((micros() + esp32sim()->bootTimeUsec) / 1000000 / 60) 
+	   ((micros() + esp32sim().bootTimeUsec) / 1000000 / 60) 
 	   % simulatedFailMinutes == simulatedFailMinutes - 1; 
    if (disable) curStatus = WL_DISCONNECTED; 
    return curStatus; 

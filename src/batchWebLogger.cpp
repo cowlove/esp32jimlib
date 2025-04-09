@@ -15,12 +15,7 @@ static inline void nullOut(const char *f, ...) {}
 #endif
 
 string floatRemoveTrailingZeros(string &);
-
-static inline float round(float f, float prec) {
-    return floor(f / prec + .5) * prec;
-}
-
-using fs::File;
+//using fs::File;
 
 string FileLineLogger::getNextLine(fs::File &f) { 
     string line;
@@ -277,7 +272,7 @@ JsonDocument BatchWebLogger::post(JsonDocument adminDoc) {
         // leave TLSP in for debugging use for now
         //for(JsonVariant v : a) v.remove(TSLP);
         serializeJson(tmp, post);
-        OUT("XXXX deepsleepMs: %09.1f", (int)logTimestampMs.elapsed()/1000.0);
+        //OUT("XXXX deepsleepMs: %09.1f", (int)logTimestampMs.elapsed()/1000.0);
 
         for(int retry = 0; retry < 5; retry ++) {
             wdtReset();

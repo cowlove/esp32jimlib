@@ -4,6 +4,7 @@
 #include "espNowMux.h"
 #include "reliableStream.h"
 #include "Arduino_CRC32.h" 
+#include "serialLog.h"
 
 #ifndef CSIM
 #include "DHT.h"
@@ -301,7 +302,7 @@ public:
     DHT dht;
     SensorDHT(RemoteSensorModule *p, const char *n, int _pin) : Sensor(p, n), pin(_pin), dht(_pin, DHT22) {}    
     void begin() override { 
-        printf("%09.3f DHT begin()\n", millis()/1000.0);
+        OUT("DHT begin()\n");
         pinMode(pin, INPUT_PULLUP); 
         dht.begin(); 
     }
@@ -386,7 +387,7 @@ public:
     string makeReport() { return sfmt("%d", digitalRead(pin)); }
     void setValue(const string &s) { 
         sscanf(s.c_str(), "%d", &mode);
-        printf("%09.3f Setting pin %d => %d\n", millis()/1000.0, pin, mode);
+        OUT("Setting pin %d => %d\n", pin, mode);
         pinMode(pin, OUTPUT);
         digitalWrite(pin, mode);
         result = s;
@@ -502,7 +503,7 @@ class RemoteSensorClient : public RemoteSensorProtocol {
     SPIFFSVariable<int> *lastChannel = NULL, *sleepRemainingMs;
     SPIFFSVariable<string> *lastSchema = NULL;
     uint32_t inhibitStartMs, lastReceive = 0, inhibitMs = 0;
-    bool deepSleep = true;
+    bool allowDeepSleep = true;
     void checkInit();
 public:
     RemoteSensorClient();

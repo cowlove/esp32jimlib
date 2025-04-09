@@ -133,7 +133,7 @@ void RemoteSensorServer::onReceive(const string &s) {
 }
 
 void RemoteSensorServer::write(const string &s) { 
-    printf("%09.3f server >>>> %s\n", millis() / 1000.0, s.c_str());
+    OUT("server >>>> %s\n", s.c_str());
     fakeEspNow.write(s);
 }
 
@@ -149,8 +149,8 @@ void RemoteSensorServer::run() {
         onReceive(in);
     static HzTimer timer(.1);
     if (timer.tick()) { 
-        //printf("%09.3f Seen %d/%d modules, last traffic %d sec ago\n",
-        // millis() / 1000.0, countSeen(), (int)modules.size(), (int)(millis() - lastReportMs) / 1000);
+        //OUT("Seen %d/%d modules, last traffic %d sec ago\n",
+        // countSeen(), (int)modules.size(), (int)(millis() - lastReportMs) / 1000);
     }
 }
 
@@ -161,8 +161,8 @@ float RemoteSensorServer::getSleepRequest() { // rename to getSleepRequestSec()
     float lastSynchAgeMin = lastSynchTs.elapsed() / 1000.0 / 60.0;
     
     if (0) { 
-        printf("%09.3f lastSynchTs %d, lastSynchAge %.2f sleepSec %.2f countSeen %d modules %d\n", 
-            millis()/1000.0, (int)lastSynchTs.elapsed(), lastSynchAgeMin, newSleepSec, countSeen(), (int)modules.size());
+        OUT("lastSynchTs %d, lastSynchAge %.2f sleepSec %.2f countSeen %d modules %d\n", 
+            (int)lastSynchTs.elapsed(), lastSynchAgeMin, newSleepSec, countSeen(), (int)modules.size());
     }
     if (countSeen() == 0 && clientTimeoutZeroTrafficMin > 0 
         && lastSynchAgeMin > synchPeriodMin + clientTimeoutZeroTrafficMin)
@@ -179,15 +179,14 @@ float RemoteSensorServer::getSleepRequest() { // rename to getSleepRequestSec()
 void RemoteSensorClient::csimOverrideMac(const string &s) { 
     mac = s;
     init();
-    deepSleep = false;
+    allowDeepSleep = false;
 } 
 Sensor *RemoteSensorClient::findByName(const char *n) { 
     return array == NULL ? NULL : array->findByName(n);
 }
 RemoteSensorClient::RemoteSensorClient() { 
     getMacAddress(mac);
-    printf("mac is %s\n", mac.c_str());
-    //init();
+    //init(); // avoid static constructor order and early SPIFFS problems 
 }
 void RemoteSensorClient::checkInit() { 
     if (array == NULL) init();
@@ -200,8 +199,8 @@ void RemoteSensorClient::init(const string &schema/*=""*/) {
         delete sleepRemainingMs;
     }
     string m1 = mac;
-    m1.resize(4);
-    printf("m1 is %s\n", m1.c_str());
+    if (m1.length() > 8) m1.erase(m1.begin(), m1.begin() + 8);
+    //OUT("m1 is %s\n", m1.c_str());
     lastChannel = new SPIFFSVariable<int>(string("/snlc") + m1, 1);
     lastSchema = new SPIFFSVariable<string>(string("/snls") + m1, "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
     sleepRemainingMs = new SPIFFSVariable<int>(string("/snsr") + m1, 0);
@@ -248,9 +247,9 @@ void RemoteSensorClient::onReceive(const string &s) {
             else if (name == "SLEEP") sscanf(val.c_str(), "%d", &sleepTime);
         }
     }
-    printf("%09.3f client <<<< %s\n", millis() / 1000.0, s.c_str());
+    OUT("client <<<< %s\n", s.c_str());
     if (updatingSchema) { 
-        printf("Got new schema: %s\n", newSchema.c_str());
+        OUT("Got new schema: %s\n", newSchema.c_str());
         init(newSchema);
         string out = array->makeAllResults();
         write(out);
@@ -260,16 +259,12 @@ void RemoteSensorClient::onReceive(const string &s) {
         array->parseAllSetValues(s);
     // TODO:  Write schema and shit to SPIFF
     if (sleepTime > 0) { 
-        if (deepSleep) { 
-            printf("%09.3f: Sleeping %d seconds...\n", millis() / 1000.0, sleepTime);
+        if (allowDeepSleep) { 
+            OUT("Sleeping %d seconds...\n", sleepTime);
             WiFi.disconnect(true);  // Disconnect from the network
             WiFi.mode(WIFI_OFF);    // Switch WiFi off
-            int rc = esp_sleep_enable_timer_wakeup(1000000LL * sleepTime);
-            Serial.flush();
-            //esp_light_sleep_start();                                                                 
-            esp_deep_sleep_start();
-            //delay(1000 * sleepTime);                                                                 
-            ESP.restart();                                 
+            deepSleep(sleepTime * 1000);
+            //ESP.restart();                                 
         } else { 
             inhibitStartMs = millis();
             inhibitMs = sleepTime * 1000;
@@ -277,7 +272,7 @@ void RemoteSensorClient::onReceive(const string &s) {
     }
 }
 void RemoteSensorClient::write(const string &s) { 
-    printf("%09.3f client >>>> %s\n", millis() / 1000.0, s.c_str());
+    OUT("client >>>> %s\n", s.c_str());
     fakeEspNow.write(s);
 }
 void RemoteSensorClient::run() {

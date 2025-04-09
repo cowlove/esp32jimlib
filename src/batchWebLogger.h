@@ -1,3 +1,4 @@
+#pragma once 
 #include "jimlib.h"
 #include <ArduinoJson.h>
 #ifndef CSIM

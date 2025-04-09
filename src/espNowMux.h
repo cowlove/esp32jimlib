@@ -53,8 +53,9 @@ public:
         esp_wifi_init(&my_config);
         esp_wifi_start(); 
       }
-      if (firstInit) 
-        Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
+      if (firstInit) {
+        //Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
+      }
       firstInit = false;
       WiFi.mode(WIFI_STA);
       esp_wifi_start();

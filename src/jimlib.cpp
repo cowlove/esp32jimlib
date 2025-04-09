@@ -1,4 +1,5 @@
 #include "jimlib.h" //todo- remove all static defs from jimlib.h
+#include "serialLog.h"
 #ifndef CSIM
 #include <esp_task_wdt.h>
 #include <esp_mac.h>
@@ -8,6 +9,7 @@
 #include "Wire.h"
 #include <OneWireNg.h>
 #include <OneWireNg_CurrentPlatform.h>
+
 
 //#include <SPIFFS.h>
 //#define LittleFS SPIFFS
@@ -355,7 +357,7 @@ string SPIFFSVariableESP32Base::readAsString() {
 	size_t bytes_read = 0;
 	if (file) { 
 		while(true) { 
-			uint8_t buf[64];  
+			uint8_t buf[96];  
 			int r = file.read(buf, sizeof(buf) - 1);
 			//printf("read() returned %d from %s\n", r, filename.c_str());
 			if (r <= 0)
@@ -500,4 +502,13 @@ const char *reset_reason_string(int reason) {
   }
   printf("unknown reset reason %d\n", reason);
   return ("UNKNOWN_RESET_REASON");
+}
+
+void DeepSleepManager::deepSleep(uint32_t ms) {
+	prepareSleep(ms);
+	OUT("DEEP SLEEP for %.2f was awake %.2fs\n", ms/1000.0, millis()/1000.0);
+	esp_sleep_enable_timer_wakeup(1000LL * ms);
+	fflush(stdout);
+	uart_tx_wait_idle(CONFIG_CONSOLE_UART_NUM);
+	esp_deep_sleep_start();        	
 }

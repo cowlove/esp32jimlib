@@ -9,7 +9,7 @@
 #include <fcntl.h>
 #include <utility>
 #include <regex>
-
+#include <cstdint>
 #ifndef CSIM
 #include "ArduinoOTA.h"
 #include "WiFiUdp.h"
@@ -569,8 +569,6 @@ static inline const String &basename_strip_ext(const char *fn) {
 	return rval;
 }
 
-
-
 static inline string &getMacAddress(string &result) {
 	static uint8_t baseMac[6] = {0xff};
 #ifdef ESP32
@@ -583,7 +581,6 @@ static inline string &getMacAddress(string &result) {
 	result = baseMacChr;
 	return result;
 }
-
 
 const String &getMacAddress();
 
@@ -687,7 +684,6 @@ struct SPIFFSVariableFake {
 #else
 #define SPIFFSVariable SPIFFSVariableFake
 #endif
-
 
 class JimWiFi { 
 	EggTimer report = EggTimer(1000);
@@ -1477,23 +1473,13 @@ class DeepSleepManager {
 	vector<Callback> callbacks; 	
 public:
 	void onDeepSleep(Callback f) { 
-		static int n = 0;
-		printf("onDeepSleep %d callbacks\n", n++);
 		callbacks.push_back(f); 
 	}
 	void prepareSleep(uint32_t ms) {
 		for(auto f : callbacks) f(ms);
 	}
-	void deepSleep(uint32_t ms) {
-		prepareSleep(ms);
-		printf("DEEP SLEEP for %.2f was awake %.2fs\n", ms/1000.0, millis()/1000.0);
-		esp_sleep_enable_timer_wakeup(1000LL * ms);
-		fflush(stdout);
-		uart_tx_wait_idle(CONFIG_CONSOLE_UART_NUM);
-		esp_deep_sleep_start();        	
-	}
+	void deepSleep(uint32_t ms);
 };
-
 
 extern JStuff j;
 
@@ -1502,6 +1488,7 @@ static inline void wifiDisconnect() {
     WiFi.mode(WIFI_OFF);
     j.jw.enabled = false;
 }
+
 static inline bool wifiConnect() { 
     wifiDisconnect(); 
 	printf("Connecting...\n");
@@ -1558,6 +1545,10 @@ public:
     uint32_t elapsed() { return this->millis(); }
     void reset() { set(0); }
 };
+
+static inline float round(float f, float prec) {
+    return floor(f / prec + .5) * prec;
+}
 
 
 //#endif

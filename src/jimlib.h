@@ -10,7 +10,9 @@
 #include "ArduinoOTA.h"
 #include "WiFiUdp.h"
 #include "driver/adc.h"
+#include "driver/ledc.h"
 #include <rom/uart.h>
+
 
 // starting jimlib.cpp cleanup
 // Sketch uses 1346572 bytes (68%) of program storage space. Maximum is 1966080 bytes.
@@ -893,14 +895,7 @@ public:
 	bool force;
 	float hertz;
 	uint32_t last = 0;
-	bool hz(float h) {
-		bool rval = force || (millis() - last) > 1000.0 / h;
-			if (rval) {
-				last = millis();
-				force = false;
-			}
-		return rval;
-	}
+	bool hz(float h);
 	bool tick() { return hz(hertz); }
 	bool secTick(float sec) { return sec > 0 ? hz(1/sec) : true; }
 };
@@ -946,6 +941,14 @@ static inline float round(float f, float prec) {
 }
 
 const char *reset_reason_string(int reason);
+
+struct LightSleepPWM { 
+    int pin;
+    ledc_channel_t chan;
+    void ledcLightSleepSetup(int p, ledc_channel_t c);
+	void ledcLightSleepSet(int i);
+	int getDuty();
+};
 
 //#endif
 #endif //#ifndef INC_JIMLIB_H

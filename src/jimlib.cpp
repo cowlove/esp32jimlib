@@ -11,6 +11,11 @@
 #include "Wire.h"
 #include <OneWireNg.h>
 #include <OneWireNg_CurrentPlatform.h>
+#include "driver/ledc.h"
+//#include "rom/uart.h"
+#include <HTTPClient.h>
+#include <esp_sleep.h>
+
 
 
 //#include <SPIFFS.h>
@@ -637,3 +642,56 @@ bool wifiConnect() {
     return WiFi.status() == WL_CONNECTED;
 }
 
+static const ledc_timer_t LEDC_LS_TIMER  = LEDC_TIMER_0;
+static const ledc_mode_t LEDC_LS_MODE = LEDC_LOW_SPEED_MODE;
+
+void LightSleepPWM::ledcLightSleepSetup(int p, ledc_channel_t c) {
+	pin = p;
+	chan = c;
+
+	ledc_channel_config_t ledc_channel = {
+		.gpio_num = pin,
+		.speed_mode = LEDC_LS_MODE,
+		.channel = chan,
+		.timer_sel = LEDC_LS_TIMER,
+		.duty = 0,
+		.hpoint = 0,
+	};
+	ledc_timer_config_t ledc_timer = {
+		.speed_mode = LEDC_LS_MODE,          // timer mode
+		.duty_resolution = LEDC_TIMER_6_BIT, // resolution of PWM duty
+		.timer_num = LEDC_LS_TIMER,          // timer index
+		.freq_hz = 25000,                      // frequency of PWM signal
+		.clk_cfg = LEDC_USE_RTC8M_CLK,       // Force source clock to RTC8M
+	};
+
+	ledc_channel.gpio_num = pin;
+	ledc_channel.channel = chan;
+
+	ledc_timer_config(&ledc_timer);
+	ledc_channel_config(&ledc_channel);
+	//printf("Frequency %u Hz\n", ledc_get_freq(LEDC_LS_MODE, LEDC_LS_TIMER));
+}
+
+void LightSleepPWM::ledcLightSleepSet(int i) { 
+	ledc_set_duty(LEDC_LS_MODE, chan, i);
+	ledc_update_duty(LEDC_LS_MODE, chan);
+#if SOC_PM_SUPPORT_RTC_PERIPH_PD
+	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_AUTO);
+#endif
+	delay(100);
+	//printf("Frequency %u Hz duty %d\n", 
+	//    ledc_get//_freq(LEDC_LS_MODE, LEDC_LS_TIMER),
+	//    ledc_get_duty(LEDC_LS_MODE, chan));
+}
+int LightSleepPWM::getDuty() { return ledc_get_duty(LEDC_LS_MODE, chan); }     
+
+
+bool HzTimer::hz(float h) {
+	bool rval = force || (millis() - last) > 1000.0 / h;
+		if (rval) {
+			last = millis();
+			force = false;
+		}
+	return rval;
+}

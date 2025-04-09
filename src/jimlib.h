@@ -592,13 +592,12 @@ using std::smatch;
 // "set xxx" hook, just use "set xxx" to show command
 // TODO: use case insensitive regex matches
 
+#ifdef ESP32
 class CommandLineInterfaceESP32 { 
 	typedef std::function<string(const char *,std::smatch)> callback;
 	std::vector<std::pair<std::string, callback>> handlers;
 public:
-
 	CommandLineInterfaceESP32() {}
-
 	void on(const char *pat, callback h) { 
 		handlers.push_back(std::pair<std::string, callback>(pat, h));
 	}
@@ -671,6 +670,7 @@ inline void CommandLineInterfaceESP32::hookRaw<String>(const char *pat, String *
 	});
 }
 
+#else
 // TODO: need to reimplement this without std::regex so that ESP8266 can still fit in OTA
 struct CommandLineInterfaceESP8266 { 
 	typedef std::function<string(const char *,std::smatch)> callback;
@@ -690,6 +690,7 @@ struct CommandLineInterfaceESP8266 {
 	template<typename T>
 	void hookVar(const char *l, T*p) {}
 };
+#endif 
 
 #ifdef ESP32
 typedef CommandLineInterfaceESP32 CommandLineInterface;

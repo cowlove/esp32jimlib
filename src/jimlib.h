@@ -149,306 +149,8 @@ public:
 };
 typedef EggTimer Timer;
 
-class DigitalDebounce {
-	EggTimer timer;
-	bool recentlyPressed;
-	uint32_t startPress;
-	int lastDuration;
-	int lastVal;
-public:
-	int duration;
-	int count;
-	DigitalDebounce(int ms = 50) : timer(ms), recentlyPressed(false),count(0) {}
-	bool checkOneshot(bool button) {
-		bool rval = false; 
-		if (button == true) {
-			if (timer.tick() && lastVal == false) 
-				recentlyPressed = false;
-			rval = !recentlyPressed;
-			if (rval) {
-				count++;
-				startPress = millis();
-			}
-			recentlyPressed = true;
-			timer.reset();
-			duration = max((uint32_t)1, (uint32_t)millis() - startPress);
-		} else {
-			duration = 0;
-			if (timer.tick()) 
-				recentlyPressed = false;
-		}
-		lastVal = button;
-		return rval;
-	}
-	int checkEndPress() {
-		int rval = 0; 
-		if (duration == 0 && lastDuration > 0) 
-			rval = lastDuration;
-		lastDuration = duration;
-		return rval;
-	}
-};
-
 #ifdef ESP32
-class RotaryEncoder {
-public:
-	int pin1, pin3;
-	DigitalDebounce a,b;
-	int limMin, limMax;
-	int value;
-	bool wrap;
-	int count = 0;
-	unsigned long lastChange;
-
-#ifndef CSIM
-	portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-	void IRAM_ATTR ISR() {	
-		portENTER_CRITICAL_ISR(&(this->mux));
-		check();
-		portEXIT_CRITICAL_ISR(&(this->mux));
-	}
-	void begin(void (*ISR_callback)(void)) {
-		attachInterrupt(digitalPinToInterrupt(pin1), ISR_callback, CHANGE);
-		attachInterrupt(digitalPinToInterrupt(pin3), ISR_callback, CHANGE);
-	}
-#else
-	void begin(void *) {};
-#endif
-	
-	RotaryEncoder(int p1, int p3, int debounce = 5) : a(debounce), b(debounce), pin1(p1), pin3(p3){
-		pinMode(pin1, INPUT_PULLUP);
-		pinMode(pin3, INPUT_PULLUP);
-		limMin = 001;
-		limMax = 360;
-		value = limMin;
-		wrap = true;
-		lastChange = 0;
-	}
-	void setLimits(int mn, int mx, bool wrap) {
-		limMin = mn;
-		limMax = mx;
-		this->wrap = wrap;
-	}
-	void change(int delta) {
-		if (delta != 0) { 
-			value += delta;
-			if (value < limMin) value = wrap ? limMax : limMin;
-			if (value > limMax) value = wrap ? limMin : limMax;
-		}
-	}
-	void check() {
-		unsigned long now = millis();
-		//if (now - lastChange > 500)
-		//	Serial.printf("\n\n");
-		count++;
-		int buta = !digitalRead(pin1);
-		int butb = !digitalRead(pin3);
-		int oa = a.checkOneshot(buta);
-		int ob = b.checkOneshot(butb);
-		int delta = 0;
-		if (oa && !butb) 
-			delta = -1;
-		if (ob && !buta)
-			delta = +1;
-		//Serial.printf("%d/%d %d/%d %d\n", buta, oa, butb, ob, delta );
-		
-		if (delta != 0) {
-			if(lastChange > 0 && now - lastChange < 20)
-				delta *= 5;
-			lastChange = now;
-		}
-		change(delta);
-	}
-};
-#endif 
-
-class DigitalButton { 
-	DigitalDebounce deb;
-	bool inverted;
-public:
-	int pin;
-	int count;
-	int mode;
-	DigitalButton(int p, bool invert = true, int m = INPUT_PULLUP, int debounceMs = 5) : pin(p), mode(m), inverted(invert), deb(debounceMs) {
-		//pinMode(pin, mode);
-	}
-	bool read() { 
-		pinMode(pin, mode);
-		bool in = digitalRead(pin);
-		return inverted ? !in : in;
-	}
-	bool check() {
-		bool in = read();
-		bool rval = deb.checkOneshot(in);
-		if (rval) count++;
-		return rval;
-	}
-	int duration() {
-		check();
-		return deb.duration;
-	}
-	int checkEndPress() {
-		check();
-		return deb.checkEndPress();
-	}
-};
-
-template <class T>
-class Changed {
-	T old;
-	bool first, cas;
-public:
-	Changed(int changeAtStart = false) : first(true), cas(changeAtStart) {}
-	bool changed(T n) { 
-		bool r = first ? cas : (n != old);
-		old = n;
-		first = false;
-		return r;
-	}
-};
-
-class LongShortFilter { 	
-	int longPressMs, resetMs;
-	unsigned long lastEndTime;
-public:
-	bool wasLong;
-	int last, wasDuration;
-	int count, wasCount;
-	int lastDuration;
-	int events;
-	bool countedLongPress;
-	bool finishingLong = false;
-	LongShortFilter(int longMs, int resetTimeMs) : longPressMs(longMs), resetMs(resetTimeMs) {
-		last = events = lastDuration = count = wasCount = lastEndTime = 0;
-		countedLongPress = false;
-	}
-	
-	bool check(int l) { 
-		unsigned long now = millis();
-		last = l;
-		int rval = false;
-		if (last == 0) { 
-			if (lastDuration > 0) {  // press just ended, button up 
-				count++;
-				lastEndTime = now;
-				wasDuration = lastDuration;
-				lastDuration = 0;
-			}
-			if (lastEndTime > 0 && now - lastEndTime >= resetMs) { // resetMS after last button press 
-				if (!countedLongPress) {
-					wasCount = count;
-					rval = true;
-				}
-				lastEndTime = count = 0;
-				countedLongPress = false;
-			} 
-		} else { 
-			if (last >= longPressMs && !countedLongPress) { // long press just finished, button still down
-				countedLongPress = true;
-				lastDuration = wasDuration = last;
-				wasCount = ++count;
-				rval = true;
-			} else {
-				lastDuration = last;
-			}
-		}
-		if (rval == true) {
-			events++;
-			wasLong = wasDuration >= longPressMs;
-		}
-		return false;
-	}
-	bool inProgress() { return ((last != 0) || (lastEndTime > 0 && millis() - lastEndTime < resetMs)) && (countedLongPress == false); }
-	int inProgressCount() { return count + ((last != 0) ? 1 : 0); }
-	Changed<int> eventCount;
-	bool newEvent() { 
-		return eventCount.changed(events);
-	}
-};
-
-class DigitalButtonLongShort { 
-	public:
-	LongShortFilter filter;
-	DigitalButton button;
-	DigitalButtonLongShort(int p, int l = 1000, int d = 250) : filter(l, d), button(p) {}
-	bool newEvent() { return filter.newEvent(); } 
-	void run() { 
-		filter.check(button.duration());
-	}
-	bool newEventR() { run(); return newEvent(); }
-	int count() { return filter.wasCount; } 
-	bool inProgress() { return filter.inProgress(); } 
-	int inProgressCount() { return filter.count; } 
-	int wasLong() { return filter.wasLong; } 
-};
-
-template<class T> 
-class StaleData {
-	uint64_t timeout, lastUpdate, lastChange;
-	T value, invalidValue;
-	bool chg = false; 
-public:
-	StaleData(int t, T i) : lastUpdate(0), timeout(t), invalidValue(i) {} 
-	bool isValid() { return millis() - lastUpdate < timeout; }
-	operator T&() { return getValue(); }
-	StaleData<T>& operator =(const T&v) {
-		chg = value != v;
-		value = v;
-		lastUpdate = millis();
-		if (chg) 
-			lastChange = millis();
-		return *this;
-	}
-	T& getValue() { return isValid() ? value : invalidValue; }
-	bool changed() { 
-		bool rval = chg;
-		chg = false;
-		return rval && isValid(); 
-	}
-	uint64_t age() { 
-		return millis() - lastUpdate;
-	}
-	uint64_t timeSinceChange() { 
-		return millis() - lastChange;
-	}
-};
-
-template<class T> 
-class ChangedData {
-	T value;
-	bool chg = false;
-	bool first = true;
-public:
-	ChangedData(T i) {} 
-	operator T&() { return value; }
-	ChangedData<T>& operator =(const T&v) {
-		chg = value != v || first;
-		value = v;
-		first = false;
-		return *this;
-	}
-	bool changed() { 
-		bool rval = chg;
-		chg = false;
-		return rval; }
-};
-
-#ifdef ESP32
-template <typename Out>
-inline void split(const std::string &s, char delim, Out result) {
-    std::istringstream iss(s);
-    std::string item;
-    while (std::getline(iss, item, delim)) {
-        *result++ = item;
-    }
-}
-
-static inline std::vector<std::string> split(const std::string &s, char delim) {
-    std::vector<std::string> elems;
-    split(s, delim, std::back_inserter(elems));
-    return elems;
-}
-
+std::vector<std::string> split(const std::string &s, char delim);
 
 template <class T>  
 class CircularBoundedQueue { 
@@ -490,32 +192,31 @@ public:
 class SL30 {
 public:
         std::string twoenc(unsigned char x) {
-                char r[3];
-                r[0] = (((x & 0xf0) >> 4) + 0x30);
-                r[1] = (x & 0xf) + 0x30;
-                r[2] = 0;
-                return std::string(r);
+			char r[3];
+			r[0] = (((x & 0xf0) >> 4) + 0x30);
+			r[1] = (x & 0xf) + 0x30;
+			r[2] = 0;
+			return std::string(r);
         }
         int chksum(const std::string& r) {
-                int sum = 0;
-                const char* s = r.c_str();
-                while (*s)
-                        sum += *s++;
-                return sum & 0xff;
+			int sum = 0;
+			const char* s = r.c_str();
+			while (*s)
+					sum += *s++;
+			return sum & 0xff;
         }
-        void open() {
-        }
+        void open() {}
         std::string pmrrv(const char *r) {
-                return std::string("$PMRRV") + r + twoenc(chksum(r)) + "\r\n";
-                //Serial2.write(s.c_str());
-				//Serial.printf("G5: %s", s.c_str());
-                //Serial.write(s.c_str());
-        }
+			return std::string("$PMRRV") + r + twoenc(chksum(r)) + "\r\n";
+			//Serial2.write(s.c_str());
+			//Serial.printf("G5: %s", s.c_str());
+			//Serial.write(s.c_str());
+		}
         std::string setCDI(double hd, double vd) {
-                int flags = 0b11111010;
-                hd *= 127 / 3;
-                vd *= 127 / 3;
-                return pmrrv((std::string("21") + twoenc(hd) + twoenc(vd) + twoenc(flags)).c_str());
+			int flags = 0b11111010;
+			hd *= 127 / 3;
+			vd *= 127 / 3;
+			return pmrrv((std::string("21") + twoenc(hd) + twoenc(vd) + twoenc(flags)).c_str());
         }
 };
 
@@ -546,7 +247,6 @@ static inline std::string nmeaChecksum(const std::string &s) {
 	snprintf(buf, sizeof(buf), "*%02X\n", (int)check);
 	return std::string("$") + s + std::string(buf);	
 }
-
 
 struct DsTempData { 
 	uint64_t id;
@@ -706,7 +406,7 @@ public:
 			{"Station 54", "Local1747", ""}, 
 		};
 
-bool waitConnected(int ms, int bestMatch = -1) { 
+	bool waitConnected(int ms, int bestMatch = -1) { 
 		uint32_t startMs = millis();
 		while(millis() - startMs < ms) { 
 			if (WiFi.status() == WL_CONNECTED) {
@@ -726,7 +426,6 @@ bool waitConnected(int ms, int bestMatch = -1) {
 	void autoConnect() {
 		if (!enabled) 
 			return;
-
 		//WiFi.disconnect(true);
 		//WiFi.mode(WIFI_STA);
 		//WiFi.setSleep(false);
@@ -998,16 +697,6 @@ static inline int hex2bin(const char *in, char *out, int inLength) {
                 *(out++) = c;
         }
         return inLength / 2;
-}
-
-static inline void dbg(const char *(format), ...) { 
-	va_list args;
-	va_start(args, format);
-	char buf[256];
-	vsnprintf(buf, sizeof(buf), format, args);
-	va_end(args);
-	//mqtt.publish("debug", buf);
-	Serial.println(buf);
 }
 
 void webUpgrade(const char *u);
@@ -1514,35 +1203,13 @@ class DeepSleepElapsedTimer {
     SPIFFSVariable<uint32_t> bootOffsetMs, startTs; 
     bool initialized = false, startExpired;
 	string prefix;
-	void checkInit() { 
-		if (!initialized) { 
-            if (getResetReason(0) != 5) {
-                bootOffsetMs = startExpired ? 0xf00000 : 0;
-				startTs = 0;
-			}
-            initialized = true;
-        }
-	}
+	void checkInit();
 public:
-    DeepSleepElapsedTimer(const string &_prefix, bool _startExpired = false) 
-		: prefix(_prefix), 
-		bootOffsetMs(_prefix + "_off", 0),
-		startTs(_prefix + "_st", 0), 
-		startExpired(_startExpired) {
-		dsm().onDeepSleep([this](uint32_t ms) { prepareSleep(ms); });
-	}
-    void prepareSleep(uint32_t ms) { 
-        bootOffsetMs = bootOffsetMs + ::millis() + typicalBootTimeMs + ms;
-    }
-    uint32_t millis() {
-		checkInit();
-        return ::millis() + bootOffsetMs - startTs;
-    }
-	void set(uint32_t ms) {
-		checkInit(); 
-		startTs = ::millis() + bootOffsetMs - ms;
-	}
-    uint32_t elapsed() { return this->millis(); }
+    DeepSleepElapsedTimer(const string &_prefix, bool _startExpired = false);
+	void prepareSleep(uint32_t ms);
+	uint32_t millis();
+	void set(uint32_t ms);
+	uint32_t elapsed() { return this->millis(); }
     void reset() { set(0); }
 };
 
@@ -1550,6 +1217,7 @@ static inline float round(float f, float prec) {
     return floor(f / prec + .5) * prec;
 }
 
+const char *reset_reason_string(int reason);
 
 //#endif
 #endif //#ifndef INC_JIMLIB_H

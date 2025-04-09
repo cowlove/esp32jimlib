@@ -512,3 +512,47 @@ void DeepSleepManager::deepSleep(uint32_t ms) {
 	uart_tx_wait_idle(CONFIG_CONSOLE_UART_NUM);
 	esp_deep_sleep_start();        	
 }
+
+void DeepSleepElapsedTimer::checkInit() { 
+	if (!initialized) { 
+		if (getResetReason(0) != 5) {
+			bootOffsetMs = startExpired ? 0xf00000 : 0;
+			startTs = 0;
+		}
+		initialized = true;
+	}
+}
+
+DeepSleepElapsedTimer::DeepSleepElapsedTimer(const string &_prefix, bool _startExpired/* = false*/) 
+	: prefix(_prefix), 
+	bootOffsetMs(_prefix + "_off", 0),
+	startTs(_prefix + "_st", 0), 
+	startExpired(_startExpired) {
+	dsm().onDeepSleep([this](uint32_t ms) { prepareSleep(ms); });
+}
+void DeepSleepElapsedTimer::prepareSleep(uint32_t ms) { 
+	bootOffsetMs = bootOffsetMs + ::millis() + typicalBootTimeMs + ms;
+}
+uint32_t DeepSleepElapsedTimer::millis() {
+	checkInit();
+	return ::millis() + bootOffsetMs - startTs;
+}
+void DeepSleepElapsedTimer::set(uint32_t ms) {
+	checkInit(); 
+	startTs = ::millis() + bootOffsetMs - ms;
+}
+
+template <typename Out>
+inline void split(const std::string &s, char delim, Out result) {
+    std::istringstream iss(s);
+    std::string item;
+    while (std::getline(iss, item, delim)) {
+        *result++ = item;
+    }
+}
+
+std::vector<std::string> split(const std::string &s, char delim) {
+    std::vector<std::string> elems;
+    split(s, delim, std::back_inserter(elems));
+    return elems;
+}

@@ -1,9 +1,7 @@
 #include "serialLog.h" 
 SerialLogManager serialLog(0xff);
 
-void SerialLogManager::out(const char *format, ...) { 
-    va_list args;
-    va_start(args, format);
+void SerialLogManager::vout(const char *format, va_list args) { 
     string s;
     if (options & showSleep) s += sfmt("%09.1f ", dsTime.millis()/1000.0);
     if (options & showMillis) s += sfmt("%07.3f ", millis()/1000.0);
@@ -23,5 +21,10 @@ void SerialLogManager::out(const char *format, ...) {
         s += '\n'; 
     printf("%s", s.c_str());
     fflush(stdout);
+}
+void SerialLogManager::out(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vout(format, args);
     va_end(args);
 };

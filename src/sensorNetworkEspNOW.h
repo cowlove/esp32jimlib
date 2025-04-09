@@ -464,14 +464,10 @@ class RemoteSensorServer : public RemoteSensorProtocol {
 
     // used to pre-feed and initialize so server boots/wakes with the last values.  cleared on hard boot 
     SPIFFSVariable<vector<string>> spiffResultLog = SPIFFSVariable<vector<string>>("/RemoteSensorSever.Log", {});
-    
-    //uint32_t lastReportMs = 0, nextSleepTimeMs = 0; 
-    // time remaining in sleep after being interrupted by pauseSleep();
-    //SPIFFSVariable<int> spiffsResumeSleepMs = SPIFFSVariable<int>("/RemSenSrv_srs", 0);
     DeepSleepElapsedTimer lastSynchTs = DeepSleepElapsedTimer("/RemSenSrv_ls", 0);
     DeepSleepElapsedTimer lastLastSynchTs = DeepSleepElapsedTimer("/RemSenSrv_lls", 0); // just for measuring/debugging
     SPIFFSVariable<bool> sensorsCompleteOnSleep = SPIFFSVariable<bool>("/RemSenSrv_sCoS", false);
-    uint32_t lastReportTs = 0;
+    DeepSleepElapsedTimer lastTrafficTs = DeepSleepElapsedTimer("/RemSenSrv_lts", 0);
 
     bool initialized = false;
     void checkInit();

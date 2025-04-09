@@ -44,7 +44,7 @@ int RemoteSensorServer::countSeen() {
 }
 
 float RemoteSensorServer::lastTrafficSec() { 
-    return (lastSynchTs.elapsed()) / 1000.0;
+    return lastTrafficTs.elapsed() / 1000.0;
 }
  
 RemoteSensorServer::RemoteSensorServer(vector<RemoteSensorModule *> m) : modules(m) {
@@ -101,7 +101,7 @@ void RemoteSensorServer::onReceive(const string &s) {
                     lastSynchTs.reset();
                 } 
                 p->seen = true;
-                lastReportTs = millis();
+                lastTrafficTs.reset();
                 p->parseAllResults(s);
                 int moduleSleepSec = ((synchPeriodMin * 60 * 1000) - lastSynchTs.elapsed()) / 1000; 
                 string out = "SERVER=1 MAC=" + p->mac + " SCHASH=" + hash + " SLEEP=" 

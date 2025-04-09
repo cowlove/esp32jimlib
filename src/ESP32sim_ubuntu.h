@@ -42,6 +42,9 @@ using std::max;
 using std::deque;
 using std::to_string;
 
+#define PROGMEM 
+
+
 #define ARDUINO_VARIANT "csim"
 #ifndef GIT_VERSION
 #define GIT_VERSION "no-git-version"
@@ -272,8 +275,6 @@ struct OneWireNg {
 };
 typedef OneWireNg OneWireNg_CurrentPlatform;
 
-
-
 void ledcWrite(int chan, int val);
 
 struct ledc_channel_config_t {
@@ -312,7 +313,6 @@ static inline void ledc_set_duty(int, int chan, int val) {
 static inline int ledc_get_duty(int, int) { return 0; }
 static inline void ledc_timer_config(void *) {}
 static inline void ledc_channel_config(void *) {}
-
 
 // simple pin manager to simply return values that were written
 class ESP32sim_pinManager : public ESP32sim_Module {
@@ -462,6 +462,7 @@ static inline String operator +(const String &a, const char *b) { return String(
 static inline bool operator ==(const char *a, const String &b) { return b.st == a; }
 static inline bool operator ==(const String &a, const char *b) { return a.st == b; }
 static inline bool operator ==(const String &a, const String &b) { return a.st == b.st; }
+
 class IPAddress {
 public:
 	IPAddress(int, int, int, int) {}
@@ -472,8 +473,8 @@ public:
 };
 
 class FakeSerial { 
-	public:
-	deque<pair<uint64_t,String>> inputQueue;
+public:
+	deque<pair<uint64_t, String>> inputQueue;
 	String inputLine;
 	int toConsole = 0;
 	void begin(int a = 0, int b = 0, int c = 0, int d = 0, bool e = 0) {}
@@ -481,58 +482,20 @@ class FakeSerial {
 	void print(const char *p) { this->printf("%s", p); }
 	void println(const char *p= NULL) { this->printf("%s\n", p != NULL ? p : ""); }
 	void print(char c) { this->printf("%c", c); } 
-	void printf(const char  *f, ...) { 
-		va_list args;
-		va_start (args, f);
-		if (toConsole) 
-			vprintf (f, args);
-		va_end (args);
-	}
+	void printf(const char  *f, ...);
 	void setTimeout(int) {}
 	void flush() {} 
 	int availableForWrite() { return 1; } 
-	int available() {
-		if (inputLine.length() > 0)
-			return inputLine.length(); 
-		if (inputQueue.size() > 0 && millis() >= inputQueue[0].first) 
-			return inputQueue[0].second.length();
-		return 0;
-	}
-	int readBytes(uint8_t *b, int l) {
-		if (inputLine.length() == 0 && inputQueue.size() > 0 && millis() >= inputQueue[0].first) { 
-			inputLine = inputQueue[0].second;
-			inputQueue.pop_front();
-		}
-		int rval =  min(inputLine.length(), l);
-		if (rval > 0) {
-			strncpy((char *)b, inputLine.c_str(), rval);
-			if (rval < inputLine.length())
-				inputLine = inputLine.substring(rval, -1);
-			else 
-				inputLine = "";
-		}
-		return rval;
-	} 
+	int available();
+	int readBytes(uint8_t *b, int l);
 	int write(const uint8_t *, int) { return 0; }
 	int write(const char *) { return 0; }	
-	int read(char * b, int l) { 
-		return readBytes((uint8_t *)b, l);
-	}
-	int read() { 
-		uint8_t b;
-		if (readBytes(&b, 1) == 1)
-			return b;
-		return -1; 
-	}
-
-	void scheduleInput(int64_t ms, const String &s) { 
-		inputQueue.push_back(pair<int64_t,String>(ms, s));
-	}
+	int read(char * b, int l) { return readBytes((uint8_t *)b, l); }
+	int read();
+	void scheduleInput(int64_t ms, const String &s) { inputQueue.push_back({ms, s});}
 };
-
-extern FakeSerial Serial, Serial1, Serial2;
-
 typedef FakeSerial Stream;
+extern FakeSerial Serial, Serial1, Serial2;
 
 #define WL_DISCONNECTED 0
 #define WL_CONNECTED 1
@@ -542,7 +505,6 @@ typedef FakeSerial Stream;
 #define HEX 0 
 
 #include <arpa/inet.h>
-
 #if __BIG_ENDIAN__
 # define htonll(x) (x)
 # define ntohll(x) (x)
@@ -583,7 +545,6 @@ struct StaticJsonDocument {
 
 struct FakeWiFi {
 	int simulatedFailMinutes = 0;  /* if n > 0 fail for a minute every nth minute */
-
 	int curStatus = WL_DISCONNECTED;
 	int begin(const char *, const char *) { curStatus = WL_CONNECTED; return 0; }
 	int status();
@@ -642,7 +603,7 @@ public:
 	int begin(WiFiClientSecure, const char *) { return 0; }
 	String getString() { return String(response.c_str()); }
 	int GET() { 
-		return csim_doPOSTorGET(url.c_str(), false, "", "", wc.buffer);
+		return csim_doPOSTorGET(false, "", wc.buffer);
 	}
 	int getSize() { return wc.buffer.length(); }
 	WiFiClient *getStreamPtr() { return &wc; } 
@@ -650,10 +611,8 @@ public:
 	void end() {}
 	void addHeader(const char *h1, const char *h2) { header1 = h1; header2 = h2; }
 	int POST(const char *postData) {
-		string hdr = header1 + ": " + header2;
-		return csim_doPOSTorGET(url.c_str(), true, hdr.c_str(), postData, response);
+		return csim_doPOSTorGET(true, postData, response);
 	}
-	// csim hooks
 private:
 	typedef std::function<int(const char *url, const char *hdr, const char *data, string &result)> postHookT;
 	struct postHookInfo {
@@ -661,57 +620,16 @@ private:
 		bool isPost; // otherwise its a get
 		postHookT func;
 	};
-	static vector<postHookInfo> csim_hooks;
-	static int csim_doPOSTorGET(const char *url, bool isPost, const char *hdr, const char *data, string &result) { 
-		auto p = csim_hooks.end();
-		std::cmatch m;
-		for(auto i  = csim_hooks.begin(); i != csim_hooks.end(); i++) { // find best hook
-			if (std::regex_match(url, m, std::regex(i->urlRegex))) {
-				if (i->urlRegex.length() > p->urlRegex.length() && i->isPost == isPost) {
-					p = i;
-				}
-			}
-		}
-		if (p != csim_hooks.end()) return p->func(url, hdr, data, result);
-		return -1;
-
-	}
+	static vector<postHookInfo> &csim_hooks();
+	int csim_doPOSTorGET(bool isPost, const char *data, string &result);
 public:
 	static void csim_onPOST(const string &url, postHookT func) {
-		csim_hooks.push_back({url, true, func});
+		csim_hooks().push_back({url, true, func});
 	}
 	static void csim_onGET(const string &url, postHookT func) {
-		csim_hooks.push_back({url, false, func});
-	}
-	static int csim_defaultOnPOST(const char *url, const char *hdr, const char *data, string &result) {
-		string cmd = string("curl --silent -X POST -H '") + hdr + "' -d '" +
-			data + "' " + url;
-		FILE *fp = popen(cmd.c_str(), "r");
-		int bufsz = 64 * 1024;
-		char *buf = (char *)malloc(bufsz);
-		result = fgets(buf, bufsz, fp);
-		result = buf;
-		fclose(fp);
-		free(buf);
-		return 200;
-	}
-	static int csim_defaultOnGET(const char *url, const char *hdr, const char *data, string &result) {
-		string cmd = "curl --silent -X GET '" + string(url) + "'";
-		FILE *fp = popen(cmd.c_str(), "r");
-		int bufsz = 128 * 1024;
-		char *buf = (char *)malloc(bufsz);
-		int n = fread(buf, 1, bufsz, fp);
-		result.assign(buf, n);
-		fclose(fp);
-		free(buf);
-		return 200;
+		csim_hooks().push_back({url, false, func});
 	}
 };
-
-#define PROGMEM 
-
-
-
 
 class PubSubClient : public ESP32sim_Module {
 	std::function<void(char *, byte *p, unsigned int)> callback = nullptr;
@@ -846,7 +764,6 @@ struct NTPClient {
 	int getSeconds() { return millis() % (60 * 1000) / (1000); }
 	void setUpdateInterval(int) {}
 	String getFormattedTime() { return String("TIMESTRING"); }
-
 };
 
 class FakeWire {
@@ -864,8 +781,6 @@ extern FakeWire Wire;
 #define ESP_IF_WIFI_STA 0 
 #define WIFI_SECOND_CHAN_NONE 0 
 #define WIFI_IF_AP 0
-
-
 
 typedef enum {
     ESP_NOW_SEND_SUCCESS = 0,       /**< Send ESPNOW data successfully */
@@ -943,30 +858,9 @@ class ESPNOW_csimPipe : public ESP32sim_Module, public ESPNOW_csimInterface {
 	int fdIn;
 	const char *outFilename;
 public:
-	ESPNOW_csimPipe(const char *inFile, const char *outF) : outFilename(outF) { 
-		fdIn = open(inFile, O_RDONLY | O_NONBLOCK); 
-	}
-	void send(const uint8_t *mac_addr, const uint8_t *data, int len) override {
-		int fdOut = open(outFilename, O_WRONLY | O_NONBLOCK); 
-		if(fdOut > 0) {
-			int n = ::write(fdOut, data, len);
-			if (n <= 0) { 
-				printf("write returned %d", n);
-	
-			}
-		}
-		close(fdOut);
-	}
-	virtual void loop() override {
-		static uint8_t mac[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-		char buf[512];
-		int n;
-		while(fdIn > 0 && (n = ::read(fdIn, buf, sizeof(buf))) > 0) { 
-			if (ESP32_esp_now_recv_cb != NULL) {
-				ESP32_esp_now_recv_cb(mac, (uint8_t *)buf, n);
-			}	
-		}
-	} 
+	ESPNOW_csimPipe(const char *inFile, const char *outF);
+	void send(const uint8_t *mac_addr, const uint8_t *data, int len) override;
+	void loop() override;
 };
 
 static inline int esp_wifi_internal_set_fix_rate(int, int, int) { return ESP_OK; } 
@@ -983,14 +877,8 @@ static inline int esp_wifi_set_channel(int, int) { return ESP_OK; }
 static inline int esp_now_register_send_cb(esp_now_send_cb_t cb) { ESP32_esp_now_send_cb = cb; return ESP_OK; }
 static inline int esp_now_register_recv_cb(esp_now_recv_cb_t cb) { ESP32_esp_now_recv_cb = cb; return ESP_OK; }
 static inline int esp_now_register_recv_cb(esp_now_recv_cb_t_v3 cb) { return ESP_OK; }
-static inline int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
-	if (ESP32_esp_now_send_cb != NULL)
-		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 
-	if (ESPNOW_sendHandler != NULL) 
-		ESPNOW_sendHandler->send(mac, data, len); 
-	return ESP_OK; 
-}
 static inline int esp_wifi_config_espnow_rate(int, int) { return ESP_OK; }
+int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len);
 
 #define INV_SUCCESS 1
 #define INV_XYZ_GYRO 1
@@ -1089,77 +977,35 @@ class WebServer {
 };
 
 class FakeCAN {
+	typedef std::function<void(int)> callbackT;
+	callbackT callback = NULL;
+	ifstream simFile;
+	string simFileLine;
+	int packetByteIndex = 0;
+	int packetLen = 0;
+	int packetAddr;
+	float firstPacketTs = 0;
+	float pendingPacketTs = 0;
 public:
-  FakeCAN() {}
-  int begin(long baudRate) { return 1; }
-  void end() {}
-  int endPacket() { return 0; }
-  int parsePacket() { return 0; }
-  int packetId() { return packetAddr; }
-  int read() { 
-	char *p = strchr((char *)simFileLine.c_str(), ']');
-	if (p == NULL) return 0;
-	for (int i = 0; i < packetByteIndex / 8 + 1; i++) {
-		p = strchr(p + 1, ' ');
-		if (p == NULL) return 0;
-	}
-	unsigned int rval;
-	char b[3];
-	b[0] = *(p + 1 + (packetByteIndex % 8) * 2);
-	b[1] = *(p + 2 + (packetByteIndex % 8) * 2);
-	b[3] = 0;
-	if (sscanf(b, "%02x", &rval) != 1)
-		return 0;
-	packetByteIndex++;
-	return rval; 
-  }
-  int packetRtr()  { return 0; }
-  typedef void(*callbackT)(int);
-  callbackT callback = NULL;
-  void onReceive(callbackT cb) { callback = cb; }
-  int filter(int id, int mask) { return 0; }
-  int filterExtended(long id, long mask) { return 0; }
-  int setPins(int, int) { return 0; }
-  int write(int) { return 0; } 
-  int beginExtendedPacket(int) { return 0; } 
-// simulation hooks
-  ifstream simFile;
-  string simFileLine;
-  int packetByteIndex = 0;
-  int packetLen = 0;
-  int packetAddr;
-  float firstPacketTs = 0;
-  float pendingPacketTs = 0;
-
-
-  void setSimFile(const char *fn) { simFile.open(fn); }
-  void run() { 
-	if (callback == NULL || !simFile) 
-		return;
-	
-	if (simFileLine.size() == 0) { 
-		std::getline(simFile, simFileLine);
-		if (sscanf(simFileLine.c_str(), " (%f) can0 %x [%d]", 
-			&pendingPacketTs, &packetAddr, &packetLen) != 3) 
-			return;
-	}
-
-	if (simFileLine.size() > 0) { 
-		packetByteIndex = 0;
-		if (firstPacketTs == 0) firstPacketTs = pendingPacketTs;
-		if (micros() > (pendingPacketTs - firstPacketTs) * 1000000.0) {
-			int remain = packetLen;
-			while(remain > 0) { 
-				int l = min(remain, 8);
-				callback(l);
-				remain -= 8;
-			} 
-			simFileLine = ""; 
-		}
-	}
-  }
-  
+	FakeCAN() {}
+	int begin(long baudRate) { return 1; }
+	void end() {}
+	int endPacket() { return 0; }
+	int parsePacket() { return 0; }
+	int packetId() { return packetAddr; }
+	int read();
+	int packetRtr()  { return 0; }
+	void onReceive(callbackT cb) { callback = cb; }
+	int filter(int id, int mask) { return 0; }
+	int filterExtended(long id, long mask) { return 0; }
+	int setPins(int, int) { return 0; }
+	int write(int) { return 0; } 
+	int beginExtendedPacket(int) { return 0; } 
+	// simulation hooks
+	void setSimFile(const char *fn) { simFile.open(fn); }
+	void run();  
 };
+
 extern FakeCAN CAN;
 
 struct RTC_DS3231 {
@@ -1206,12 +1052,13 @@ struct DHT {
 		map<int,float> temp, humidity;
 		void set(int pin, float t, float h) { temp[pin] = t; humidity[pin] = h; }
 	};
-	static Csim csim;
+	static Csim &csim();
+	static void csim_set(int pin, float t, float h) { csim().set(pin, t, h); }
 	int pin;
     DHT(int p , int) : pin(p) {} // static init order disaster { csim.set(pin, 22.22, 77.77); } 
 	void begin() {}
-    float readTemperature(bool t = false, bool f = false) { return csim.temp[pin]; }
-    float readHumidity(bool f = false) { return csim.humidity[pin]; }
+    float readTemperature(bool t = false, bool f = false) { return csim().temp[pin]; }
+    float readHumidity(bool f = false) { return csim().humidity[pin]; }
 };
 
 #define DHT22 0

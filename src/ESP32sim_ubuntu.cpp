@@ -56,7 +56,8 @@ FakeSD SD;
 FakeWire Wire;
 Update_t Update;
 FakeCAN CAN;
-DHT::Csim DHT::csim;
+
+DHT::Csim &DHT::csim() { static Csim *firstUse = new Csim(); return *firstUse; }
 ESP32sim_flags csim_flags;
 
 void ESP32sim_exit() { 	esp32sim().exit(); }
@@ -110,9 +111,57 @@ ESPNOW_csimInterface *ESPNOW_sendHandler = NULL;
 esp_now_send_cb_t ESP32_esp_now_send_cb = NULL;
 esp_now_recv_cb_t ESP32_esp_now_recv_cb = NULL;
 
-vector<HTTPClient::postHookInfo> HTTPClient::csim_hooks = {
-	{".*", true, HTTPClient::csim_defaultOnPOST },
-	{".*", false, HTTPClient::csim_defaultOnGET }};
+static int csim_defaultOnPOST(const char *url, const char *hdr, const char *data, string &result) {
+	string cmd = string("curl --silent -X POST -H '") + hdr + "' -d '" +
+		data + "' " + url;
+	FILE *fp = popen(cmd.c_str(), "r");
+	int bufsz = 64 * 1024;
+	char *buf = (char *)malloc(bufsz);
+	result = fgets(buf, bufsz, fp);
+	result = buf;
+	fclose(fp);
+	free(buf);
+	return 200;
+}
+
+static int csim_defaultOnGET(const char *url, const char *hdr, const char *data, string &result) {
+	string cmd = "curl --silent -X GET '" + string(url) + "'";
+	FILE *fp = popen(cmd.c_str(), "r");
+	int bufsz = 128 * 1024;
+	char *buf = (char *)malloc(bufsz);
+	int n = fread(buf, 1, bufsz, fp);
+	result.assign(buf, n);
+	fclose(fp);
+	free(buf);
+	return 200;
+}
+
+vector<HTTPClient::postHookInfo> &HTTPClient::csim_hooks() { 
+	static vector<postHookInfo> *firstUse = new vector<postHookInfo>({
+		{".*", true, csim_defaultOnPOST },
+		{".*", false, csim_defaultOnGET }});
+	return *firstUse;
+}
+
+int HTTPClient::csim_doPOSTorGET(bool isPost, const char *data, string &result) { 
+	string hdr = header1 + ": " + header2;
+	auto p = csim_hooks().end();
+	std::cmatch m;
+	for(auto i  = csim_hooks().begin(); i != csim_hooks().end(); i++) { // find best hook
+		if (std::regex_match(url.c_str(), m, std::regex(i->urlRegex))) {
+			if (i->urlRegex.length() > p->urlRegex.length() && i->isPost == isPost) {
+				p = i;
+			}
+		}
+	}
+	if (p != csim_hooks().end()) 
+		return p->func(url.c_str(), hdr.c_str(), data, result);
+	return -1;
+}
+
+//vector<HTTPClient::postHookInfo> HTTPClient::csim_hooks = {
+//	{".*", true, csim_defaultOnPOST },
+//	{".*", false, csim_defaultOnGET }};
 
 
 // TODO: extend this to use vector<unsigned char> to handle binary data	
@@ -230,4 +279,123 @@ int FakeWiFi::status() {
    if (disable) curStatus = WL_DISCONNECTED; 
    return curStatus; 
 } 
+
+void FakeSerial::printf(const char  *f, ...) { 
+	va_list args;
+	va_start (args, f);
+	if (toConsole) 
+		vprintf(f, args);
+	va_end (args);
+}
+
+int FakeSerial::available() {
+	if (inputLine.length() > 0)
+		return inputLine.length(); 
+	if (inputQueue.size() > 0 && millis() >= inputQueue[0].first) 
+		return inputQueue[0].second.length();
+	return 0;
+}
+int FakeSerial::readBytes(uint8_t *b, int l) {
+	if (inputLine.length() == 0 && inputQueue.size() > 0 && millis() >= inputQueue[0].first) { 
+		inputLine = inputQueue[0].second;
+		inputQueue.pop_front();
+	}
+	int rval =  min(inputLine.length(), l);
+	if (rval > 0) {
+		strncpy((char *)b, inputLine.c_str(), rval);
+		if (rval < inputLine.length())
+			inputLine = inputLine.substring(rval, -1);
+		else 
+			inputLine = "";
+	}
+	return rval;
+} 
+
+int FakeSerial::read() { 
+	uint8_t b;
+	if (readBytes(&b, 1) == 1)
+		return b;
+	return -1; 
+}
+
+ESPNOW_csimPipe::ESPNOW_csimPipe(const char *inFile, const char *outF) : outFilename(outF) { 
+	fdIn = open(inFile, O_RDONLY | O_NONBLOCK); 
+}
+
+void ESPNOW_csimPipe::send(const uint8_t *mac_addr, const uint8_t *data, int len) { //override
+	int fdOut = open(outFilename, O_WRONLY | O_NONBLOCK); 
+	if(fdOut > 0) {
+		int n = ::write(fdOut, data, len);
+		if (n <= 0) { 
+			printf("write returned %d", n);
+
+		}
+	}
+	close(fdOut);
+}
+
+void ESPNOW_csimPipe::loop() { // override
+	static uint8_t mac[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+	char buf[512];
+	int n;
+	while(fdIn > 0 && (n = ::read(fdIn, buf, sizeof(buf))) > 0) { 
+		if (ESP32_esp_now_recv_cb != NULL) {
+			ESP32_esp_now_recv_cb(mac, (uint8_t *)buf, n);
+		}	
+	}
+} 
+
+int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
+	if (ESP32_esp_now_send_cb != NULL)
+		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 
+	if (ESPNOW_sendHandler != NULL) 
+		ESPNOW_sendHandler->send(mac, data, len); 
+	return ESP_OK; 
+}
+
+void FakeCAN::run() { 
+	if (callback == NULL || !simFile) 
+		return;
+	
+	if (simFileLine.size() == 0) { 
+		std::getline(simFile, simFileLine);
+		if (sscanf(simFileLine.c_str(), " (%f) can0 %x [%d]", 
+			&pendingPacketTs, &packetAddr, &packetLen) != 3) 
+			return;
+	}
+
+	if (simFileLine.size() > 0) { 
+		packetByteIndex = 0;
+		if (firstPacketTs == 0) firstPacketTs = pendingPacketTs;
+		if (micros() > (pendingPacketTs - firstPacketTs) * 1000000.0) {
+			int remain = packetLen;
+			while(remain > 0) { 
+				int l = min(remain, 8);
+				callback(l);
+				remain -= 8;
+			} 
+			simFileLine = ""; 
+		}
+	}
+}  
+
+int FakeCAN::read() { 
+	char *p = strchr((char *)simFileLine.c_str(), ']');
+	if (p == NULL) return 0;
+	for (int i = 0; i < packetByteIndex / 8 + 1; i++) {
+		p = strchr(p + 1, ' ');
+		if (p == NULL) return 0;
+	}
+	unsigned int rval;
+	char b[3];
+	b[0] = *(p + 1 + (packetByteIndex % 8) * 2);
+	b[1] = *(p + 2 + (packetByteIndex % 8) * 2);
+	b[3] = 0;
+	if (sscanf(b, "%02x", &rval) != 1)
+		return 0;
+	packetByteIndex++;
+	return rval; 
+}
+
+
 #endif

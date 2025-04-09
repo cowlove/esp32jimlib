@@ -198,7 +198,7 @@ BatchWebLogger::BatchWebLogger(const string &prefix/* = ""*/) :
     spiffsReportLog(string("/") + prefix + ".reportLog"), 
     postFailTimer(string("/") + prefix + ".postFailTimer") {}
 
-JsonDocument BatchWebLogger::post(JsonDocument adminDoc) {
+JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
     JsonDocument rval; 
     if (!wifiConnect()) {
         // broken you can't reset the report timer with TSLP values still in the log
@@ -217,12 +217,12 @@ JsonDocument BatchWebLogger::post(JsonDocument adminDoc) {
     String ssid = WiFi.SSID();
     String ip = WiFi.localIP().toString();
     String mac = getMacAddress();
-    adminDoc["GIT"] = GIT_VERSION;
-    adminDoc["MAC"] = mac.c_str(); 
-    adminDoc["SSID"] = ssid.c_str();
-    adminDoc["IP"] =  ip.c_str();
-    adminDoc["RSSI"] = WiFi.RSSI();
-    adminDoc["ARCH"] = ARDUINO_VARIANT;
+    hdrDoc["GIT"] = GIT_VERSION;
+    hdrDoc["MAC"] = mac.c_str(); 
+    hdrDoc["SSID"] = ssid.c_str();
+    hdrDoc["IP"] =  ip.c_str();
+    hdrDoc["RSSI"] = WiFi.RSSI();
+    hdrDoc["ARCH"] = ARDUINO_VARIANT;
     //adminDoc["AVER"] = ESP_ARDUINO_VERSION_STR;
 
     HTTPClient client;
@@ -241,7 +241,7 @@ JsonDocument BatchWebLogger::post(JsonDocument adminDoc) {
         string post;
         {   // add scope to free up admin string when we're done with it
             string admin;
-            serializeJson(adminDoc, admin);
+            serializeJson(hdrDoc, admin);
             post = "{\"ADMIN\":" + admin + ",\"LOG\":[";
         }
         int i = 0;
@@ -389,3 +389,42 @@ string floatRemoveTrailingZeros(string &s) {
     return s;
 }
     
+float FailRetryInterval::getWaitMinutes(float defaultMin/* = -1*/) {
+    if (defaultMin >= 0) 
+        defaultWaitMin = defaultMin;
+    float waitMin = defaultWaitMin;
+
+    for(auto i : failStrategy) {
+        FailActions::FailAction action = i.second;
+        if (spiffsConsecutiveFails < i.first)
+            continue;
+        if (spiffsConsecutiveFails == i.first) { 
+            if (action.reboot) ESP.restart();
+            if (action.halt) { /*TODO*/}
+            action.func();
+        }
+        // TODO BROKEN: these actions incorrectly apply to ALL later fail counts,
+        // should only apply to the failures between *i and the next rule
+        if (spiffsConsecutiveFails >= i.first ) { 
+            if (action.waitMin != -1) waitMin = action.waitMin;
+            if (action.increase != -1) {
+
+                waitMin *= action.increase * (spiffsConsecutiveFails - i.first + 1);
+            }
+            if (action.multiply != -1) {
+                for(int n = 0; n < spiffsConsecutiveFails.read() - i.first + 1; n++) 
+                    waitMin *= action.multiply;
+            }
+        }
+    } 
+    return waitMin; 
+} 
+
+void FailRetryInterval::reportStatus(bool success) { 
+    spiffsConsecutiveFails = success ? 0 : spiffsConsecutiveFails + 1;
+}
+
+FailRetryInterval::FailRetryInterval(const string &prefix /*= ""*/, float _defaultWaitMin/* = 1*/) 
+     : defaultWaitMin(_defaultWaitMin), 
+     spiffsConsecutiveFails(string("/") + prefix + "FRI.fails", 0) {
+}

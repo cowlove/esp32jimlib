@@ -70,9 +70,9 @@ std::string vsfmt(const char *format, va_list args) {
 
 	int n = vsnprintf(buf, sizeof(buf), format, args);
 	if (n > sizeof(buf) - 1) {
-		rval.resize(n + 1);
+		rval.resize(n + 2, ' ');
 		vsnprintf((char *)rval.data(), rval.size(), format, args2);
-		printf("n %d size %d strlen %d\n", n, (int)rval.size(), (int)strlen(rval.c_str()));
+		//printf("n %d size %d strlen %d\n", n, (int)rval.size(), (int)strlen(rval.c_str()));
 		rval.resize(n);
 	} else { 
 		rval = buf;
@@ -296,15 +296,16 @@ void MQTTClient::run() {
 }
 
 
+
 const String &getMacAddress() {
 	static uint8_t baseMac[6] = {0xff};
 #ifdef ESP32
 	// Get MAC address for WiFi station
 	esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
 #endif
-	static char baseMacChr[18] = {0};
+	static char baseMacChr[32] = {0};
 	static String mac;
-	sprintf(baseMacChr, "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
+	snprintf(baseMacChr, sizeof(baseMacChr), "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
 	mac = baseMacChr;
 	return mac;
 }

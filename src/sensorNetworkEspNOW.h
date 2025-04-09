@@ -362,6 +362,7 @@ public:
     string makeReport() { return sfmt("%d", digitalRead(pin)); }
     static SchemaParser::RegisterClass reg;
 };
+
 inline SchemaParser::RegisterClass SensorInput::reg([](const string &s)->Sensor * { 
     int pin, mode = INPUT;
     if (sscanf(s.c_str(), "INPUT%d", &pin) == 1) {
@@ -495,13 +496,14 @@ public:
 };
 
 class RemoteSensorClient : public RemoteSensorProtocol { 
-    string mac = getMacAddress().c_str();
+    string mac;
     ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true);
     RemoteSensorModule *array = NULL;
     SPIFFSVariable<int> *lastChannel = NULL, *sleepRemainingMs;
     SPIFFSVariable<string> *lastSchema = NULL;
     uint32_t inhibitStartMs, lastReceive = 0, inhibitMs = 0;
     bool deepSleep = true;
+    void checkInit();
 public:
     RemoteSensorClient();
     bool channelHop = false;

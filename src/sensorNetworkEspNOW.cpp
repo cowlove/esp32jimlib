@@ -64,9 +64,7 @@ void RemoteSensorServer::onReceive(const string &s) {
     if (in.find(specialWords.SERVER) != in.end()) return;
 
     float late = lastLastSynchTs.elapsed() / 1000.0 - synchPeriodMin * 60;
-    OUT("server <<<< %s (%.3fs late)\n", 
-        millis() / 1000.0, s.c_str(), 
-        late);
+    OUT("server <<<< %s (%.3fs late)\n", s.c_str(), late);
 
     bool packetHandled = false;
     for(auto p : modules) { 
@@ -187,7 +185,12 @@ Sensor *RemoteSensorClient::findByName(const char *n) {
     return array == NULL ? NULL : array->findByName(n);
 }
 RemoteSensorClient::RemoteSensorClient() { 
-    init();
+    getMacAddress(mac);
+    printf("mac is %s\n", mac.c_str());
+    //init();
+}
+void RemoteSensorClient::checkInit() { 
+    if (array == NULL) init();
 }
 void RemoteSensorClient::init(const string &schema/*=""*/) { 
     if (array != NULL) {
@@ -196,9 +199,13 @@ void RemoteSensorClient::init(const string &schema/*=""*/) {
         delete lastSchema;
         delete sleepRemainingMs;
     }
-    lastChannel = new SPIFFSVariable<int>(("/sn_lc_" + mac).c_str(), 1);
-    lastSchema = new SPIFFSVariable<string>(("/sn_ls_" + mac).c_str(), "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
-    sleepRemainingMs = new SPIFFSVariable<int>(("/sn_sr_" + mac).c_str(), 0);
+    string m1 = mac;
+    m1.resize(4);
+    printf("m1 is %s\n", m1.c_str());
+    lastChannel = new SPIFFSVariable<int>(string("/snlc") + m1, 1);
+    lastSchema = new SPIFFSVariable<string>(string("/snls") + m1, "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
+    sleepRemainingMs = new SPIFFSVariable<int>(string("/snsr") + m1, 0);
+    lastSchema->debug = 1;
     if (schema != "")
         *lastSchema = schema;
     string s = *lastSchema;
@@ -274,6 +281,7 @@ void RemoteSensorClient::write(const string &s) {
     fakeEspNow.write(s);
 }
 void RemoteSensorClient::run() {
+    checkInit();
     string in = fakeEspNow.read();
     if (in != "") 
         onReceive(in);

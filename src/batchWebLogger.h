@@ -1,7 +1,8 @@
 #include "jimlib.h"
 #include <ArduinoJson.h>
-
+#ifndef CSIM
 #include <FS.h>
+#endif
 
 using fs::File;
 

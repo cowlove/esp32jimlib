@@ -569,6 +569,22 @@ static inline const String &basename_strip_ext(const char *fn) {
 	return rval;
 }
 
+
+
+static inline string &getMacAddress(string &result) {
+	static uint8_t baseMac[6] = {0xff};
+#ifdef ESP32
+	// Get MAC address for WiFi station
+	esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
+#endif
+	static char baseMacChr[32] = {0};
+	static String mac;
+	snprintf(baseMacChr, sizeof(baseMacChr), "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
+	result = baseMacChr;
+	return result;
+}
+
+
 const String &getMacAddress();
 
 template<class T> bool fromString(const string &s, T&v);

@@ -72,6 +72,8 @@ std::string vsfmt(const char *format, va_list args) {
 	if (n > sizeof(buf) - 1) {
 		rval.resize(n + 1);
 		vsnprintf((char *)rval.data(), rval.size(), format, args2);
+		printf("n %d size %d strlen %d\n", n, (int)rval.size(), (int)strlen(rval.c_str()));
+		rval.resize(n);
 	} else { 
 		rval = buf;
 	}
@@ -311,7 +313,7 @@ SPIFFSVariableESP32Base::SPIFFSVariableESP32Base() {
 	if (filename.length() > 31) { 
 		printf("SPIFFSVariable WARNING filename '%s' length %d > 31\n", filename.c_str(), (int)filename.length());
 	} 
-	LittleFS.begin();
+	//LittleFS.begin();
 }
 
 void SPIFFSVariableESP32Base::begin() { 
@@ -470,6 +472,11 @@ int getLedPin() {
 
 
 int getResetReason(int cpu) { return rtc_get_reset_reason(cpu); }
+
+DeepSleepManager &dsm() { 
+	static DeepSleepManager *firstUse = new DeepSleepManager();
+	return *firstUse;
+}
 
 const char *reset_reason_string(int reason) {
   switch ( reason)

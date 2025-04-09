@@ -77,9 +77,11 @@ void esp_deep_sleep_start() {
 	for (auto i : deepSleepHooks) i(sleep_timer);
 	char *argv[128];
 	int argc = 0; 
+	// strip out all --boot-time, --seconds, --reset-reason and --show-args command line arguments
 	for(char *const *p = esp32sim().argv; *p != NULL; p++) {
 		if (strcmp(*p, "--boot-time") == 0) p++;
 		else if (strcmp(*p, "--seconds") == 0) p++;
+		else if (strcmp(*p, "-s") == 0) p++;
 		else if (strcmp(*p, "--reset-reason") == 0) p++;
 		else if (strcmp(*p, "--show-args") == 0) {/*skip arg*/}
 		else argv[argc++] = *p;
@@ -138,6 +140,7 @@ void ESP32sim::main(int argc, char **argv) {
 		else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
 		else if (strcmp(*a, "--wifi-errors") == 0) sscanf(*(++a), "%d", &WiFi.simulatedFailMinutes); 
 		else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%lf", &seconds); 
+		else if (strcmp(*a, "-s") == 0) sscanf(*(++a), "%lf", &seconds); 
 		else if (strcmp(*a, "--boot-time") == 0) sscanf(*(++a), "%ld", &bootTimeUsec); 
 		else if (strcmp(*a, "--show-args") == 0) showargs = 1; 
 		else if (strcmp(*a, "--reset-reason") == 0) sscanf(*(++a), "%d", &resetReason); 

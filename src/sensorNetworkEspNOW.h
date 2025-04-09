@@ -456,8 +456,6 @@ inline SchemaParser::RegisterClass SensorVariable::reg([](const string &s)->Sens
 //    allow catching the first client.  The first client will reset lastSynchTs and after that 
 //    clientTimeoutSec/lingerSec will apply. 
 
-extern DeepSleepElapsedTimer deepsleepMs;
-
 class RemoteSensorServer : public RemoteSensorProtocol { 
     ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true);
     vector<RemoteSensorModule *> modules;

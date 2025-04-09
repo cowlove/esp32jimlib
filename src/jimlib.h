@@ -14,6 +14,7 @@
 #include "ArduinoOTA.h"
 #include "WiFiUdp.h"
 #include "driver/adc.h"
+#include <rom/uart.h>
 
 // starting jimlib.cpp cleanup
 // Sketch uses 1346572 bytes (68%) of program storage space. Maximum is 1966080 bytes.
@@ -34,6 +35,10 @@ static inline void ledcWrite(int, int) {}
 #include <stdarg.h>
 #define DEG2RAD(x) ((x)*M_PI/180)
 #define RAD2DEG(x) ((x)*180/M_PI)
+
+using std::vector;
+using std::string;
+using std::pair;
 
 void wdtInit(int sec);
 void wdtReset();
@@ -566,7 +571,6 @@ static inline const String &basename_strip_ext(const char *fn) {
 
 const String &getMacAddress();
 
-using std::string;
 template<class T> bool fromString(const string &s, T&v);
 template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d ", &v) == 1; }
 template<> inline bool fromString(const string &s, uint64_t &v) { return sscanf(s.c_str(), "%lu ", &v) == 1; }
@@ -1368,8 +1372,8 @@ public:
 	void out(String s) { string s2 = s.c_str(); out(s2); }
 };
 
-#define OUT j.out
-#define LOG j.log
+//#define OUT j.out
+//#define LOG j.log
 
 #endif
 
@@ -1452,6 +1456,56 @@ public:
 	
 int getResetReason(int cpu = 0);
 
+class DeepSleepManager { 
+	typedef std::function<void(uint32_t)> Callback;
+	vector<Callback> callbacks; 	
+public:
+	void onDeepSleep(Callback f) { 
+		static int n = 0;
+		printf("onDeepSleep %d callbacks\n", n++);
+		callbacks.push_back(f); 
+	}
+	void prepareSleep(uint32_t ms) {
+		for(auto f : callbacks) f(ms);
+	}
+	void deepSleep(uint32_t ms) {
+		prepareSleep(ms);
+		printf("DEEP SLEEP for %.2f was awake %.2fs\n", ms/1000.0, millis()/1000.0);
+		esp_sleep_enable_timer_wakeup(1000LL * ms);
+		fflush(stdout);
+		uart_tx_wait_idle(CONFIG_CONSOLE_UART_NUM);
+		esp_deep_sleep_start();        	
+	}
+};
+
+
+extern JStuff j;
+
+static inline void wifiDisconnect() { 
+    WiFi.disconnect();
+    WiFi.mode(WIFI_OFF);
+    j.jw.enabled = false;
+}
+static inline bool wifiConnect() { 
+    wifiDisconnect(); 
+	printf("Connecting...\n");
+    j.jw.enabled = true;
+    j.mqtt.active = false;
+    j.jw.onConnect([](){});
+    j.jw.autoConnect();
+    for(int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) { 
+        delay(500);
+        wdtReset();
+    }
+    String ssid = WiFi.SSID(), ip = WiFi.localIP().toString();
+    printf("Connected to AP '%s', IP=%s, channel=%d, RSSI=%d\n",
+        ssid.c_str(), ip.c_str(), WiFi.channel(), WiFi.RSSI());
+    return WiFi.status() == WL_CONNECTED;
+}
+
+extern DeepSleepManager &dsm();
+static inline void deepSleep(uint32_t ms) { dsm().deepSleep(ms); }
+
 class DeepSleepElapsedTimer { 
 	static const int typicalBootTimeMs = 500;
     SPIFFSVariable<uint32_t> bootOffsetMs, startTs; 
@@ -1471,7 +1525,9 @@ public:
 		: prefix(_prefix), 
 		bootOffsetMs(_prefix + "_off", 0),
 		startTs(_prefix + "_st", 0), 
-		startExpired(_startExpired) {}
+		startExpired(_startExpired) {
+		dsm().onDeepSleep([this](uint32_t ms) { prepareSleep(ms); });
+	}
     void prepareSleep(uint32_t ms) { 
         bootOffsetMs = bootOffsetMs + ::millis() + typicalBootTimeMs + ms;
     }

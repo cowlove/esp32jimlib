@@ -204,7 +204,7 @@ void RemoteSensorClient::init(const string &schema/*=""*/) {
     lastChannel = new SPIFFSVariable<int>(string("/snlc") + m1, 1);
     lastSchema = new SPIFFSVariable<string>(string("/snls") + m1, "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
     sleepRemainingMs = new SPIFFSVariable<int>(string("/snsr") + m1, 0);
-    lastSchema->debug = 1;
+    //lastSchema->debug = 1;
     if (schema != "")
         *lastSchema = schema;
     string s = *lastSchema;

@@ -1,5 +1,7 @@
 #include "jimlib.h" //todo- remove all static defs from jimlib.h
 #include "serialLog.h"
+#include <sstream>
+
 #ifndef CSIM
 #include <esp_task_wdt.h>
 #include <esp_mac.h>
@@ -556,3 +558,82 @@ std::vector<std::string> split(const std::string &s, char delim) {
     split(s, delim, std::back_inserter(elems));
     return elems;
 }
+
+void bin2hex(const char *in, int len, char *out, int olen) {
+	len = min(len, olen / 2); 
+	for (int n = 0; n < len; n++) { 
+		sprintf(out + 2 * n, "%02x", in[n]);
+	}
+	out[2 * len] = '\0';
+}
+
+int hex2bin(const char *in, char *out, int inLength) { 
+	for (const char *p = in; p < in + inLength ; p += 2) { 
+			char b[3];
+			b[0] = p[0];
+			b[1] = p[1];
+			b[2] = 0;
+			int c;
+			sscanf(b, "%x", &c);
+			*(out++) = c;
+	}
+	return inLength / 2;
+}
+
+std::string nmeaChecksum(const std::string &s) { 
+	char check = 0;
+	for (const char &c : s)  
+		check ^= c;
+	char buf[8];
+	snprintf(buf, sizeof(buf), "*%02X\n", (int)check);
+	return std::string("$") + s + std::string(buf);	
+}
+
+float avgAnalogRead(int p, int avg/* = 1024*/) { 
+	float bv = 0;
+	pinMode(p, INPUT);
+	for (int i = 0; i < avg; i++) {
+#ifdef ARDUINO_ESP32S3_DEV
+		if (p == 1) bv += adc1_get_raw(ADC1_CHANNEL_0);
+		if (p == 2) bv += adc1_get_raw(ADC1_CHANNEL_1);
+		if (p == 3) bv += adc1_get_raw(ADC1_CHANNEL_2);
+		if (p == 4) bv += adc1_get_raw(ADC1_CHANNEL_3);
+#else
+		bv += analogRead(p);
+#endif
+	}
+	return bv / avg;
+}
+
+String buf2str(const byte *buf, int len) { 
+	String s;
+	for (int i = 0; i < len; i++) {
+	  s += (char)buf[i];
+	}
+	return s;
+}
+  
+extern JStuff j;
+void wifiDisconnect() { 
+    WiFi.disconnect();
+    WiFi.mode(WIFI_OFF);
+    j.jw.enabled = false;
+}
+
+bool wifiConnect() { 
+    wifiDisconnect(); 
+	printf("Connecting...\n");
+    j.jw.enabled = true;
+    j.mqtt.active = false;
+    j.jw.onConnect([](){});
+    j.jw.autoConnect();
+    for(int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) { 
+        delay(500);
+        wdtReset();
+    }
+    String ssid = WiFi.SSID(), ip = WiFi.localIP().toString();
+    printf("Connected to AP '%s', IP=%s, channel=%d, RSSI=%d\n",
+        ssid.c_str(), ip.c_str(), WiFi.channel(), WiFi.RSSI());
+    return WiFi.status() == WL_CONNECTED;
+}
+

@@ -2,14 +2,10 @@
 #define INC_JIMLIB_H
 #include <functional>
 #include <string>
-#include <string>
-#include <sstream>
 #include <vector>
-#include <iterator>
-#include <fcntl.h>
-#include <utility>
-#include <regex>
+#include <stdarg.h>
 #include <cstdint>
+#include <regex>
 #ifndef CSIM
 #include "ArduinoOTA.h"
 #include "WiFiUdp.h"
@@ -32,7 +28,6 @@ static inline void ledcWrite(int, int) {}
 #include "ESP32sim_ubuntu.h"
 #endif
 
-#include <stdarg.h>
 #define DEG2RAD(x) ((x)*M_PI/180)
 #define RAD2DEG(x) ((x)*180/M_PI)
 
@@ -52,51 +47,6 @@ std::string sfmt(const char *format, ...);
 
 int scanI2c();
 void printPins();
-
-#ifdef ESP32
-class FakeMutex {
-	public:
-	void lock() {}
-	void unlock() {}
-};
-
-class FakeSemaphore { 
- public:
-	FakeSemaphore(int max = 1, int init = 1) {}
-	bool take(int delay = 0) { return true; } 
-	void give() {}
-};
-
-class Mutex {
-	SemaphoreHandle_t xSem;
- public:
-	Mutex() { 
-		xSem = xSemaphoreCreateCounting(1,1);
-		unlock();
-	}
-	void lock() { xSemaphoreTake(xSem, portMAX_DELAY); } 
-	void unlock() { xSemaphoreGive(xSem); }
-};
-
-class Semaphore { 
-	SemaphoreHandle_t xSem;
- public:
-	Semaphore(int max = 1, int init = 1) { 
-		xSem = xSemaphoreCreateCounting(max, init);
-	}
-	bool take(int delay = portMAX_DELAY) { return xSemaphoreTake(xSem, delay); } 
-	void give() { xSemaphoreGive(xSem); }
-	int getCount() { return uxSemaphoreGetCount(xSem); } 
-};
-
-class ScopedMutex {
-	Mutex *mutex; 
-  public:
-	ScopedMutex(Mutex &m) : mutex(&m) { mutex->lock(); } 
-	ScopedMutex(FakeMutex &m) : mutex(NULL) {} 
-	~ScopedMutex() { if (mutex != NULL) mutex->unlock(); } 
-};
-#endif
 
 class LineBuffer {
 public:
@@ -151,102 +101,8 @@ typedef EggTimer Timer;
 
 #ifdef ESP32
 std::vector<std::string> split(const std::string &s, char delim);
-
-template <class T>  
-class CircularBoundedQueue { 
-	Semaphore empty, full;
-	int size, head, tail;
-	T *array;
-public:
-	CircularBoundedQueue(int s) : size(s), empty(s, s), full(s, 0) {
-		array = new T[size];
-		head = tail = 0;
-	}
-	T *peekHead(int tmo) {
-		if (!empty.take(tmo)) 
-			return NULL;
-
-		T *rval = &array[head];
-		head = (head + 1) % size;
-		return rval;
-	}
-	void postHead() {
-		full.give();
-	}
-	T *peekTail(int tmo) {
-		if (!full.take(tmo)) 
-			return NULL;
-
-		T *rval = &array[tail];
-		tail = (tail + 1) % size;
-		return rval;
-	}
-	void freeTail() {
-		empty.give();
-	}
-	int getCount() { return full.getCount(); } 
-};
 #endif //#ifdef ESP32
 
-// From data format described in web search "SL30 Installation Manual PDF" 
-class SL30 {
-public:
-        std::string twoenc(unsigned char x) {
-			char r[3];
-			r[0] = (((x & 0xf0) >> 4) + 0x30);
-			r[1] = (x & 0xf) + 0x30;
-			r[2] = 0;
-			return std::string(r);
-        }
-        int chksum(const std::string& r) {
-			int sum = 0;
-			const char* s = r.c_str();
-			while (*s)
-					sum += *s++;
-			return sum & 0xff;
-        }
-        void open() {}
-        std::string pmrrv(const char *r) {
-			return std::string("$PMRRV") + r + twoenc(chksum(r)) + "\r\n";
-			//Serial2.write(s.c_str());
-			//Serial.printf("G5: %s", s.c_str());
-			//Serial.write(s.c_str());
-		}
-        std::string setCDI(double hd, double vd) {
-			int flags = 0b11111010;
-			hd *= 127 / 3;
-			vd *= 127 / 3;
-			return pmrrv((std::string("21") + twoenc(hd) + twoenc(vd) + twoenc(flags)).c_str());
-        }
-};
-
-class PinPulse { 
-public:
-	int pin;
-	uint64_t toggleTime = 0;
-	PinPulse(int p, int initval = 0) : pin(p) { pinMode(p, OUTPUT); digitalWrite(p, initval); } 
-	void  pulse(int v, int ms) { 
-		toggleTime = ms > 0 ? millis() + ms: 0;
-		pinMode(pin, OUTPUT);
-		digitalWrite(pin, v);
-	}
-	void run() { 
-		if (toggleTime > 0 && millis() >= toggleTime) {
-			toggleTime = 0;
-			pinMode(pin, OUTPUT);
-			digitalWrite(pin, !digitalRead(pin));
-		}
-	}
-};
-
-static inline std::string nmeaChecksum(const std::string &s) { 
-	char check = 0;
-	for (const char &c : s)  
-		check ^= c;
-	char buf[8];
-	snprintf(buf, sizeof(buf), "*%02X\n", (int)check);
-	return std::string("$") + s + std::string(buf);	
-}
 
 struct DsTempData { 
 	uint64_t id;
@@ -595,8 +451,7 @@ public:
 #include <unistd.h>
 #endif
 
-#ifndef ESP32
-
+#if 0 
 class ShortBootDebugMode {
 	SPIFFSVariable<int> shortBootCount = SPIFFSVariable<int>("/shortBootCount", 1);
 	bool initialized = false;
@@ -623,92 +478,21 @@ class ShortBootDebugMode {
 		return sbCount >= threshold;
 	} 
 };
-#endif // ESP32
-
-template<class T>
-class ExtrapolationTable {
-        bool between(T a, T b, T c) { 
-                return (c >= a && c < b) || (c <= a && c > b);
-        }
-public:
-        struct Pair {
-             T a,b;        
-        } *table;
-        ExtrapolationTable(struct Pair *t) : table(t) {}
-        T extrapolate(T in, bool reverse = false) {
-                for(int index = 1; table[index].a != -1 || table[index].b != -1; index++) {     
-                        if (!reverse && between(table[index - 1].a, table[index].a, in))  
-                                return table[index - 1].b + (in - table[index - 1].a) 
-                                        * (table[index].b - table[index - 1].b) 
-                                        / (table[index].a - table[index - 1].a);
-                        if (reverse && between(table[index - 1].b, table[index].b, in)) 
-                                return table[index - 1].a + (in - table[index - 1].b) 
-                                        * (table[index].a - table[index - 1].a) 
-                                        / (table[index].b - table[index - 1].b);                
-          
-                }
-                return -1;
-        }
-        T operator () (T in) { return extrapolate(in); }
-};
-
-static const float FEET_PER_METER = 3.28084;
-static const float MPS_PER_KNOT = 0.51444;
-
-inline float random01() { 	return rand() / (RAND_MAX + 1.0); }
+#endif //0
 #define ARRAY_SIZE(array) (sizeof(array)/sizeof(array[0]))
 #ifndef GIT_VERSION
 #define GIT_VERSION "unknown-git-version"
 #endif
 
-
-static inline float avgAnalogRead(int p, int avg = 1024) { 
-	float bv = 0;
-	pinMode(p, INPUT);
-	for (int i = 0; i < avg; i++) {
-#ifdef ARDUINO_ESP32S3_DEV
-		if (p == 1) bv += adc1_get_raw(ADC1_CHANNEL_0);
-		if (p == 2) bv += adc1_get_raw(ADC1_CHANNEL_1);
-		if (p == 3) bv += adc1_get_raw(ADC1_CHANNEL_2);
-		if (p == 4) bv += adc1_get_raw(ADC1_CHANNEL_3);
-#else
-		bv += analogRead(p);
-#endif
-	}
-	return bv / avg;
-}
-
-static inline void bin2hex(const char *in, int len, char *out, int olen) {
-	len = min(len, olen / 2); 
-	for (int n = 0; n < len; n++) { 
-		sprintf(out + 2 * n, "%02x", in[n]);
-	}
-	out[2 * len] = '\0';
-}
-
-static inline int hex2bin(const char *in, char *out, int inLength) { 
-        for (const char *p = in; p < in + inLength ; p += 2) { 
-                char b[3];
-                b[0] = p[0];
-                b[1] = p[1];
-                b[2] = 0;
-                int c;
-                sscanf(b, "%x", &c);
-                *(out++) = c;
-        }
-        return inLength / 2;
-}
+void bin2hex(const char *in, int len, char *out, int olen);
+int hex2bin(const char *in, char *out, int inLength);
+std::string nmeaChecksum(const std::string &s);
 
 void webUpgrade(const char *u);
+float avgAnalogRead(int p, int avg = 1024);
 
 // create a String from a char buf without NULL termination 
-static inline String buf2str(const byte *buf, int len) { 
-  String s;
-  for (int i = 0; i < len; i++) {
-	s += (char)buf[i];
-  }
-  return s;
-}
+String buf2str(const byte *buf, int len);
 
 // connects to an mqtt server, publish stuff on <name>, subscribe to <name>/in
 class PubSubClient;
@@ -730,10 +514,9 @@ public:
 	void dprintf(const char *format, ...);
 	void run();
 };
-
 int getLedPin();
 
-
+#if 0
 class PwmChannel {
 	int pin; 
 	int channel;
@@ -800,6 +583,7 @@ public:
 		lastPatIdx = pi;
 	}
 };
+#endif 
 
 #if 1 // TODO - this could move back to supporting ESP8266
 using std::smatch;
@@ -887,7 +671,6 @@ inline void CommandLineInterfaceESP32::hookRaw<String>(const char *pat, String *
 	});
 }
 
-
 // TODO: need to reimplement this without std::regex so that ESP8266 can still fit in OTA
 struct CommandLineInterfaceESP8266 { 
 	typedef std::function<string(const char *,std::smatch)> callback;
@@ -924,7 +707,6 @@ class CliVariable {
 	T& operator =(T v) { val = v; return val; } 
 };
 
-
 class QuickRebootCounter {
 	SPIFFSVariable<int> count = SPIFFSVariable<int>("/quickRebootCount", 0); 
 	SPIFFSVariable<int> pending = SPIFFSVariable<int>("/quickRebootPending", 0); 
@@ -940,7 +722,6 @@ public:
 	}
 	int reboots() { return count; }
 };
-
 
 #define CLI_VARIABLE_INT(name,val) CliVariable<int> name = CliVariable<int>(j.cli, #name, val)
 #define CLI_VARIABLE_FLOAT(name,val) CliVariable<float> name = CliVariable<float>(j.cli, #name, val)
@@ -1101,38 +882,6 @@ class TempSensor {
 
 static inline void digitalToggle(int pin) { pinMode(pin, OUTPUT); digitalWrite(pin, !digitalRead(pin)); }
 
-// registers SETTEMP, CURRENTTEMP, HIST commands with CLI.  Returns heat on/off
-// value from check() function 
-class CliTempControl {
-public:
-	CliVariable<float> setTemp;
-	CliVariable<float> currentTemp;
-	CliVariable<float> hist;
-	CliVariable<int> heat;
-	CliVariable<float> minTemp;
-	JStuff *j;
-
-	CliTempControl(JStuff *js, float temp, float h) :
-		j(js), setTemp(js->cli, "setTemp", temp),
-		currentTemp(js->cli, "currentTemp", temp), 
-		hist(js->cli, "hist", h),
-		heat(js->cli, "heat", 0),
-		minTemp(js->cli, "minTemp", 5) {}
-
-	bool check(float temp) { 
-		currentTemp = temp;
-		if (temp > setTemp) { 
-			heat = 0;
-		} else if (temp >= minTemp && temp < setTemp - hist) { 
-			heat = 1;
-		}
-		return heat;
-	}	
-	void pub() { 
-		j->out("setTemp: %6.2f currentTemp: %6.2f heat: %d", (float)setTemp, (float)currentTemp, (int)heat);
-	}
-};
-
 #define PRINTLINE() if(1) { printf("%09.3f " __FILE__ " line %d\n", millis() / 1000.0, __LINE__); } 
 
 const char *reset_reason_string(int reason);
@@ -1170,30 +919,8 @@ public:
 	void deepSleep(uint32_t ms);
 };
 
-extern JStuff j;
-
-static inline void wifiDisconnect() { 
-    WiFi.disconnect();
-    WiFi.mode(WIFI_OFF);
-    j.jw.enabled = false;
-}
-
-static inline bool wifiConnect() { 
-    wifiDisconnect(); 
-	printf("Connecting...\n");
-    j.jw.enabled = true;
-    j.mqtt.active = false;
-    j.jw.onConnect([](){});
-    j.jw.autoConnect();
-    for(int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) { 
-        delay(500);
-        wdtReset();
-    }
-    String ssid = WiFi.SSID(), ip = WiFi.localIP().toString();
-    printf("Connected to AP '%s', IP=%s, channel=%d, RSSI=%d\n",
-        ssid.c_str(), ip.c_str(), WiFi.channel(), WiFi.RSSI());
-    return WiFi.status() == WL_CONNECTED;
-}
+void wifiDisconnect();
+bool wifiConnect();
 
 extern DeepSleepManager &dsm();
 static inline void deepSleep(uint32_t ms) { dsm().deepSleep(ms); }

@@ -285,3 +285,23 @@ public:
 		return rval; }
 };
 
+
+class PinPulse { 
+public:
+    int pin;
+    uint64_t toggleTime = 0;
+    PinPulse(int p, int initval = 0) : pin(p) { pinMode(p, OUTPUT); digitalWrite(p, initval); } 
+    void  pulse(int v, int ms) { 
+        toggleTime = ms > 0 ? millis() + ms: 0;
+        pinMode(pin, OUTPUT);
+        digitalWrite(pin, v);
+    }
+    void run() { 
+        if (toggleTime > 0 && millis() >= toggleTime) {
+            toggleTime = 0;
+            pinMode(pin, OUTPUT);
+            digitalWrite(pin, !digitalRead(pin));
+        }
+    }
+};
+

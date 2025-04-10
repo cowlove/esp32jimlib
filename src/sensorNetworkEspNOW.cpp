@@ -295,7 +295,6 @@ void RemoteSensorClient::run() {
             init();
         }
     } else { 
-        static HzTimer timer(.6, true);
         if (array != NULL && timer.secTick(1.0)) { 
             string out = array->makeAllResults() + "ENDLINE=1 ";
             write(out);

@@ -472,7 +472,6 @@ class RemoteSensorServer : public RemoteSensorProtocol {
     bool initialized = false;
     void checkInit();
     RemoteSensorModule *findByMac(const string &);
-    
 public: 
     //int serverSleepSeconds = 90;
     //int serverSleepLinger = 10;
@@ -502,6 +501,7 @@ class RemoteSensorClient : public RemoteSensorProtocol {
     uint32_t inhibitStartMs, lastReceive = 0, inhibitMs = 0;
     bool allowDeepSleep = true;
     void checkInit();
+    HzTimer timer = HzTimer(.6, true);
 public:
     RemoteSensorClient();
     bool channelHop = false;

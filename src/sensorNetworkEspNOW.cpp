@@ -136,7 +136,7 @@ void RemoteSensorServer::onReceive(const string &s) {
         }
     }
     float late = lastLastSynchTs.elapsed() / 1000.0 - synchPeriodMin * 60;
-    OUT("server <<<< %s (%.2f,%.2fs late)\n", s.c_str(), lastLastSynchTs.elapsed()/1000.0, late);
+    OUT("server <<<< %s (%.2fs late)\n", s.c_str(), late);
 }
 
 void RemoteSensorServer::write(const string &s) { 

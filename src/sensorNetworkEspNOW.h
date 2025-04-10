@@ -480,7 +480,7 @@ public:
     float lingerSec = 5;
     float clientTimeoutSec = 30;
     float clientTimeoutZeroTrafficMin = -1; /* < 0 never timeout for zero clients */
-    float earlyWakeupSec = 10;
+    float earlyWakeupSec = 5;
 
     int countSeen();
     float lastTrafficSec();

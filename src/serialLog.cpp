@@ -3,11 +3,11 @@ SerialLogManager serialLog(0xff);
 
 void SerialLogManager::vout(const char *format, va_list args) { 
     string s;
-    if (options & showSleep) s += sfmt("%09.1f ", dsTime.millis()/1000.0);
-    if (options & showMillis) s += sfmt("%07.3f ", millis()/1000.0);
+    if (options & showSleep) s += sfmt("%06.1f ", dsTime.millis()/1000.0);
+    if (options & showMillis) s += sfmt("%06.3f ", millis()/1000.0);
     if (options & showLineNr) {
         string ln = sfmt("%s,%d ", basename(file), line);
-        const int width = 20;
+        const int width = 18;
         if (ln.size() < width) {
             ln.insert(ln.end(), width - ln.size(), ' '); 
         } else {

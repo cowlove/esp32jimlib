@@ -141,6 +141,8 @@ static inline string &getMacAddress(string &result) {
 }
 
 const String &getMacAddress();
+int getResetReason(int cpu = 0);
+
 
 template<class T> bool fromString(const string &s, T&v);
 template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d ", &v) == 1; }
@@ -802,8 +804,8 @@ public:
 		SPIFFSVariableESP32Base::begin();
 
 		Serial.begin(115200);
-		Serial.printf("BOOT %s git:" GIT_VERSION " mac:%s time:%05.3fs built:" __DATE__ " " __TIME__ " \n", 
-			basename_strip_ext(__BASE_FILE__).c_str(), getMacAddress().c_str(), millis() / 1000.0);
+		Serial.printf("BOOT %s git:" GIT_VERSION " mac:%s time:%05.3fs rstrsn: %d built:" __DATE__ " " __TIME__ " \n", 
+			basename_strip_ext(__BASE_FILE__).c_str(), getMacAddress().c_str(), millis() / 1000.0, getResetReason());
 		getLedPin();
 		//led.setPercent(30);
 		jw.onConnect([this](){
@@ -900,8 +902,6 @@ public:
 	bool secTick(float sec) { return sec > 0 ? hz(1/sec) : true; }
 };
 	
-int getResetReason(int cpu = 0);
-
 class DeepSleepManager { 
 	typedef std::function<void(uint32_t)> Callback;
 	vector<Callback> callbacks; 	
@@ -960,5 +960,8 @@ public:
 
 SimulatedFailureManager &simFailures();
 #define SIMFAILURE(x) simFailures().fail(x)
-//#endif
+
+
+string floatRemoveTrailingZeros(string &);
+
 #endif //#ifndef INC_JIMLIB_H

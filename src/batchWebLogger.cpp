@@ -14,9 +14,6 @@ static inline void nullOut(const char *f, ...) {}
 #define OUT nullOut
 #endif
 
-string floatRemoveTrailingZeros(string &);
-//using fs::File;
-
 string FileLineLogger::getNextLine(fs::File &f) { 
     string line;
     while(true) { 
@@ -374,19 +371,6 @@ JsonDocument BatchWebLogger::log(JsonDocument doc, JsonDocument adminDoc,
         result = post(adminDoc);
     
     return result;
-}
-
-string floatRemoveTrailingZeros(string &s) {
-    using std::regex;
-#ifndef CSIM // burns up too much time in simulation
-    //s = regex_replace(s, regex("[.]*[0]+}"), "}");
-    //s = regex_replace(s, regex("[.]*[0]+,"), ",");
-    //s = regex_replace(s, regex("[.]*[0]+]"), "]");
-    s = regex_replace(s, regex("[.][0]+ "), " ");
-    s = regex_replace(s, regex("[.][0]+\""), "\"");
-    s = regex_replace(s, regex("[.][0]+,"), ",");
-#endif
-    return s;
 }
     
 float FailRetryInterval::getWaitMinutes(float defaultMin/* = -1*/) {

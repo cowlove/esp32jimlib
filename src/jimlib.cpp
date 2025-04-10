@@ -744,3 +744,19 @@ SimulatedFailureManager &simFailures() {
 	static SimulatedFailureManager *firstStaticUse = new SimulatedFailureManager();
 	return *firstStaticUse;
 }
+
+string floatRemoveTrailingZeros(string &s) {
+    using std::regex;
+#ifdef CSIM // burns up too much time in simulation
+	return s;
+#endif
+	//return s;
+    //s = regex_replace(s, regex("[.]*[0]+}"), "}");
+    //s = regex_replace(s, regex("[.]*[0]+,"), ",");
+    //s = regex_replace(s, regex("[.]*[0]+]"), "]");
+    s = regex_replace(s, regex("([0-9])[.][0]+([\" ,}])"), "$1$2");
+    s = regex_replace(s, regex("([0-9][.][0-9]*[1-9])[0]+([\" ,}])"), "$1$2");
+    //s = regex_replace(s, regex("[.][0]+\""), "\"");
+    //s = regex_replace(s, regex("[.][0]+,"), ",");
+    return s;
+}

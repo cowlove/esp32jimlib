@@ -302,7 +302,7 @@ public:
     DHT dht;
     SensorDHT(RemoteSensorModule *p, const char *n, int _pin) : Sensor(p, n), pin(_pin), dht(_pin, DHT22) {}    
     void begin() override { 
-        OUT("DHT begin()\n");
+        //OUT("DHT begin()\n");
         pinMode(pin, INPUT_PULLUP); 
         dht.begin(); 
     }
@@ -387,7 +387,7 @@ public:
     string makeReport() { return sfmt("%d", digitalRead(pin)); }
     void setValue(const string &s) { 
         sscanf(s.c_str(), "%d", &mode);
-        OUT("Setting pin %d => %d\n", pin, mode);
+        //OUT("Setting pin %d => %d\n", pin, mode);
         pinMode(pin, OUTPUT);
         digitalWrite(pin, mode);
         result = s;
@@ -471,6 +471,7 @@ class RemoteSensorServer : public RemoteSensorProtocol {
 
     bool initialized = false;
     void checkInit();
+    RemoteSensorModule *findByMac(const string &);
     
 public: 
     //int serverSleepSeconds = 90;
@@ -479,7 +480,7 @@ public:
     float lingerSec = 5;
     float clientTimeoutSec = 30;
     float clientTimeoutZeroTrafficMin = -1; /* < 0 never timeout for zero clients */
-    float earlyWakeupSec = 5;
+    float earlyWakeupSec = 10;
 
     int countSeen();
     float lastTrafficSec();
@@ -511,7 +512,7 @@ public:
     void onReceive(const string &s);
     void write(const string &s);
     void run();
-    void setPartialDeepSleep(uint64_t usec);
+    void prepareSleep(uint32_t ms);
 };
 
 //static SchemaList::Register();

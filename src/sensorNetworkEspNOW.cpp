@@ -9,7 +9,10 @@ static inline void nullOut(const char *f, ...) {}
 
 void RemoteSensorServer::checkInit() {
     if (initialized == true) return;
-    initialized = true;
+    if (initialized == false) { 
+        initialized = true;
+        OUT("server up");
+    }
     if (getResetReason(0) != 5) {
         lastSynchTs.set(synchPeriodMin * 60 * 1000);
         sensorsCompleteOnSleep = false;
@@ -20,9 +23,10 @@ void RemoteSensorServer::checkInit() {
     for(auto s : v) {
         std::map<string, string> in = parseLine(s);
         for(auto p : modules) { 
-            if (p->mac == "auto" && in.find(specialWords.MAC) != in.end())
-                p->mac = in[specialWords.MAC];
-            if (p->mac == in[specialWords.MAC]) {
+            string inMac = in[specialWords.MAC];
+            if (p->mac == "auto" && inMac != "" && findByMac(inMac) == NULL)  
+                p->mac = inMac;
+            if (p->mac == inMac) {
                 string hash = p->makeHash();
                 if (in[specialWords.SCHASH] == hash) { 
                     p->parseAllResults(s);
@@ -53,6 +57,10 @@ RemoteSensorServer::RemoteSensorServer(vector<RemoteSensorModule *> m) : modules
 void RemoteSensorServer::prepareSleep(int ms) {
     sensorsCompleteOnSleep = (countSeen() == modules.size());
 }
+RemoteSensorModule *RemoteSensorServer::findByMac(const string &m) { 
+    for(auto p : modules) if (p->mac == m) return p;
+    return NULL;   
+}
 void RemoteSensorServer::onReceive(const string &s) {
     checkInit();
     if (s.find(specialWords.ACK) == 0) 
@@ -62,9 +70,6 @@ void RemoteSensorServer::onReceive(const string &s) {
     incomingMac = in[specialWords.MAC];
     incomingHash = in[specialWords.SCHASH];
     if (in.find(specialWords.SERVER) != in.end()) return;
-
-    float late = lastLastSynchTs.elapsed() / 1000.0 - synchPeriodMin * 60;
-    OUT("server <<<< %s (%.3fs late)\n", s.c_str(), late);
 
     bool packetHandled = false;
     for(auto p : modules) { 
@@ -77,7 +82,6 @@ void RemoteSensorServer::onReceive(const string &s) {
                 write(out);
                 return;
             }
-
             for(auto w : split(s, ' ')) { 
                 string name = w.substr(0, w.find("="));
                 string val = w.substr(w.find("=") + 1);
@@ -96,10 +100,11 @@ void RemoteSensorServer::onReceive(const string &s) {
             }
             
             if (hash == incomingHash) {
-                if (countSeen() == 0) { // first sensor? reset synch period 
+                if (countSeen() == 0) {// first sensor? reset synch period 
+                    //lastLast is maintained only for displaying "late" informational output
                     lastLastSynchTs.set(lastSynchTs.millis());
-                    lastSynchTs.reset();
-                } 
+                    lastSynchTs.reset(); 
+                }
                 p->seen = true;
                 lastTrafficTs.reset();
                 p->parseAllResults(s);
@@ -110,7 +115,7 @@ void RemoteSensorServer::onReceive(const string &s) {
                 // HACK - keep rolling log of good data lines to replay after a deep sleep
                 vector<string> log = spiffResultLog;
                 log.push_back(s);
-                if (log.size() > modules.size() * 3)
+                if (log.size() > modules.size() * 10)
                     log.erase(log.begin());
                 spiffResultLog = log;
             } else {
@@ -130,6 +135,8 @@ void RemoteSensorServer::onReceive(const string &s) {
             }
         }
     }
+    float late = lastLastSynchTs.elapsed() / 1000.0 - synchPeriodMin * 60;
+    OUT("server <<<< %s (%.2f,%.2fs late)\n", s.c_str(), lastLastSynchTs.elapsed()/1000.0, late);
 }
 
 void RemoteSensorServer::write(const string &s) { 
@@ -140,18 +147,21 @@ void RemoteSensorServer::write(const string &s) {
 void RemoteSensorServer::run() {
     checkInit();
     if (lastSynchTs.elapsed() > ((synchPeriodMin * 60) - earlyWakeupSec) * 1000) { 
-        lastLastSynchTs.set(lastSynchTs.millis()); // use for measuring/debugging
-        lastSynchTs.reset();
-        for(auto p : modules) p->seen = false;  // resets countSeen() below
+        for(auto p : modules) p->seen = false;  
+        // resets countSeen(), lastSyncnTs will be reset in inRecieve
     } 
+    if (lastSynchTs.elapsed() / 1000.0 > 
+        (synchPeriodMin + max(0.0F, clientTimeoutZeroTrafficMin)) * 60 + earlyWakeupSec) {
+        lastSynchTs.reset();
+    }
     string in = fakeEspNow.read();
     if (in != "") 
         onReceive(in);
     static HzTimer timer(.1);
-    if (timer.tick()) { 
-        //OUT("Seen %d/%d modules, last traffic %d sec ago\n",
-        // countSeen(), (int)modules.size(), (int)(millis() - lastReportMs) / 1000);
-    }
+    //if (timer.secTick(.1)) { 
+    //    OUT("Seen %d/%d modules, last traffic %d sec ago\n",
+    //         countSeen(), (int)modules.size(), lastTrafficTs.elapsed() / 1000);
+    //}
 }
 
 float RemoteSensorServer::getSleepRequest() { // rename to getSleepRequestSec()
@@ -204,7 +214,6 @@ void RemoteSensorClient::init(const string &schema/*=""*/) {
     lastChannel = new SPIFFSVariable<int>(string("/snlc") + m1, 1);
     lastSchema = new SPIFFSVariable<string>(string("/snls") + m1, "MAC=MAC SKHASH=SKHASH GIT=GIT MILLIS=MILLIS");
     sleepRemainingMs = new SPIFFSVariable<int>(string("/snsr") + m1, 0);
-    //lastSchema->debug = 1;
     if (schema != "")
         *lastSchema = schema;
     string s = *lastSchema;
@@ -300,8 +309,8 @@ void RemoteSensorClient::run() {
         }
     }
 }
-void RemoteSensorClient::setPartialDeepSleep(uint64_t usec) {
-    int remainMs = inhibitMs - (millis() - inhibitStartMs) - usec / 1000;
+void RemoteSensorClient::prepareSleep(uint32_t ms) {
+    int remainMs = inhibitMs - (millis() - inhibitStartMs) - ms;
     remainMs = max(0, remainMs);
     *sleepRemainingMs = remainMs;
 }

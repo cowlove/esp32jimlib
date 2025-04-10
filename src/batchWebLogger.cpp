@@ -196,7 +196,8 @@ void BatchWebLogger::checkInit() {
 }
 BatchWebLogger::BatchWebLogger(const string &prefix/* = ""*/) : 
     spiffsReportLog(string("/") + prefix + ".reportLog"), 
-    postFailTimer(string("/") + prefix + ".postFailTimer") {}
+    postFailTimer("BatchWebLogger", string("/") + prefix + ".pstFailTmr") {
+}
 
 JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
     JsonDocument rval; 
@@ -312,14 +313,13 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
         spiffsReportLog.trimLinesFromFront(batchSize);
     }
     client.end();
+    postPeriodTimer.reset();
+    postFailTimer.reportStatus(fail == false);
 
     if (fail == true) { 
         OUT("SleepyLogger repeat posts failed");
-        postFailTimer.reportStatus(false);
         return rval;
     }
-    postFailTimer.reportStatus(true);
-    postPeriodTimer.reset();
 
     const char *ota_ver = rval["ota_ver"];
     if (ota_ver != NULL) { 
@@ -422,9 +422,12 @@ float FailRetryInterval::getWaitMinutes(float defaultMin/* = -1*/) {
 
 void FailRetryInterval::reportStatus(bool success) { 
     spiffsConsecutiveFails = success ? 0 : spiffsConsecutiveFails + 1;
+    if (spiffsConsecutiveFails > 1) { 
+        OUT("FailRetryInterval: %s repeated failures (%d)", name.c_str(), (int)spiffsConsecutiveFails);
+    }
 }
 
-FailRetryInterval::FailRetryInterval(const string &prefix /*= ""*/, float _defaultWaitMin/* = 1*/) 
-     : defaultWaitMin(_defaultWaitMin), 
+FailRetryInterval::FailRetryInterval(const string &_name/* = ""*/, const string &prefix /*= ""*/, float _defaultWaitMin/* = 1*/) 
+     : defaultWaitMin(_defaultWaitMin), name(_name),
      spiffsConsecutiveFails(string("/") + prefix + "FRI.fails", 0) {
 }

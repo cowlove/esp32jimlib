@@ -3,7 +3,7 @@
 
 uint64_t _micros = 0;
 uint64_t _microsMax = 0xffffffff;
-
+#include "jimlib.h"
 
 int Semaphores[10];
 int nextSem = 0;
@@ -64,7 +64,7 @@ void ESP32sim_exit() { 	esp32sim().exit(); }
 
 uint64_t sleep_timer = 0;
 vector<deepSleepHookT> deepSleepHooks;
-void onDeepSleep(deepSleepHookT func) { deepSleepHooks.push_back(func); }
+void csim_onDeepSleep(deepSleepHookT func) { deepSleepHooks.push_back(func); }
 void esp_deep_sleep_start() {
 	double newRunSec = -1;
 	if (esp32sim().seconds >= 0) {
@@ -167,6 +167,82 @@ int HTTPClient::csim_doPOSTorGET(bool isPost, const char *data, string &result) 
 // TODO: extend this to use vector<unsigned char> to handle binary data	
 WiFiUDP::InputMap WiFiUDP::inputMap;
 
+void ESPNOW_csimOneProg::send(const uint8_t *mac_addr, const uint8_t *data, int data_len) {//override {
+	SimPacket p; 
+	memcpy(p.mac, mac_addr, sizeof(p.mac));
+	const char *cp = (const char *)data;
+	p.data = string(cp, cp + data_len);
+	pktQueue.push_back(p);
+}
+void ESPNOW_csimOneProg::loop() { // override
+	for(auto pkt : pktQueue) {
+		if (ESP32_esp_now_recv_cb != NULL) {
+			if (SIMFAILURE("espnow-rx") || SIMFAILURE("espnow"))
+				continue;
+			ESP32_esp_now_recv_cb(pkt.mac, (const uint8_t *)pkt.data.c_str(), pkt.data.length());
+		}
+	}
+	pktQueue.clear();
+} 
+
+// Higher fidelity ESPNOW simulation between two processes using named pipes
+//   example:
+//   ./csim --espnowPipe /tmp/fifo2 /tmp/fifo1 --mac fff1
+//   ./csim --espnowPipe /tmp/fifo1 /tmp/fifo2 --mac fff2
+
+class ESPNOW_csimPipe : public ESP32sim_Module, public ESPNOW_csimInterface {
+	int fdIn;
+	const char *outFilename;
+public:
+	ESPNOW_csimPipe(const char *inFile, const char *outF);
+	void send(const uint8_t *mac_addr, const uint8_t *data, int len) override;
+	void loop() override;
+};
+
+
+
+ESPNOW_csimPipe::ESPNOW_csimPipe(const char *inFile, const char *outF) : outFilename(outF) { 
+	fdIn = open(inFile, O_RDONLY | O_NONBLOCK); 
+}
+
+void ESPNOW_csimPipe::send(const uint8_t *mac_addr, const uint8_t *data, int len) { //override
+	int fdOut = open(outFilename, O_WRONLY | O_NONBLOCK); 
+	if(fdOut > 0) {
+		int n = ::write(fdOut, data, len);
+		if (n <= 0) { 
+			printf("write returned %d", n);
+
+		}
+	}
+	close(fdOut);
+}
+
+void ESPNOW_csimPipe::loop() { // override
+	static uint8_t mac[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+	char buf[512];
+	int n;
+	while(fdIn > 0 && (n = ::read(fdIn, buf, sizeof(buf))) > 0) { 
+		if (SIMFAILURE("espnow-rx") || SIMFAILURE("espnow"))
+		return;
+
+		if (ESP32_esp_now_recv_cb != NULL) {
+			ESP32_esp_now_recv_cb(mac, (uint8_t *)buf, n);
+		}	
+	}
+} 
+
+int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
+	if (SIMFAILURE("espnow-tx") || SIMFAILURE("espnow"))
+		return ESP_OK;
+
+	if (ESP32_esp_now_send_cb != NULL)
+		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 
+	if (ESPNOW_sendHandler != NULL) 
+		ESPNOW_sendHandler->send(mac, data, len); 
+	return ESP_OK; 
+}
+
+
 ESP32sim_Module::ESP32sim_Module() { 
 	esp32sim().modules.push_back(this);
 }
@@ -175,23 +251,19 @@ int main(int argc, char **argv) {
 	esp32sim().main(argc, argv);
 }
 
-
-void ESP32sim::main(int argc, char **argv) {
-	this->argc = argc;
-	this->argv = argv;
-	Serial.toConsole = true;
-	int showargs = 0;
-	for(char **a = argv + 1; a < argv+argc; a++) {
+void ESP32sim::parseArgs(int argc, char **argv) {
+	for(char **a = argv; a < argv+argc; a++) {
 		if (strcmp(*a, "--serial") == 0) {
 			printf("--serial is depricated, use --serialConsole\n");
 			::exit(-1);
 		}
+		else if (strcmp(*a, "--fail") == 0) simFailures().addFailure(*(++a));
 		else if (strcmp(*a, "--serialConsole") == 0) sscanf(*(++a), "%d", &Serial.toConsole); 
 		else if (strcmp(*a, "--wifi-errors") == 0) sscanf(*(++a), "%d", &WiFi.simulatedFailMinutes); 
 		else if (strcmp(*a, "--seconds") == 0) sscanf(*(++a), "%lf", &seconds); 
 		else if (strcmp(*a, "-s") == 0) sscanf(*(++a), "%lf", &seconds); 
 		else if (strcmp(*a, "--boot-time") == 0) sscanf(*(++a), "%ld", &bootTimeUsec); 
-		else if (strcmp(*a, "--show-args") == 0) showargs = 1; 
+		else if (strcmp(*a, "--show-args") == 0) showArgs = true; 
 		else if (strcmp(*a, "--reset-reason") == 0) sscanf(*(++a), "%d", &resetReason); 
 		else if (strcmp(*a, "--mac") == 0) { 
 			sscanf(*(++a), "%lx", &csim_mac);
@@ -220,13 +292,18 @@ void ESP32sim::main(int argc, char **argv) {
 			(*it)->parseArg(a, argv + argc);
 		}
 	}
-	if (showargs) { 
+}
+void ESP32sim::main(int argc, char **argv) {
+	this->argc = argc;
+	this->argv = argv;
+	Serial.toConsole = true;
+	parseArgs(argc, argv); // skip argv[0]
+	if (showArgs) { 
 		printf("args: ");
 			for(char **a = argv; a < argv+argc; a++) 
 				printf("%s ", *a);
 		printf("\n");
 	}
-	
 	for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
 		(*it)->setup();
 	setup();
@@ -318,41 +395,6 @@ int FakeSerial::read() {
 	return -1; 
 }
 
-ESPNOW_csimPipe::ESPNOW_csimPipe(const char *inFile, const char *outF) : outFilename(outF) { 
-	fdIn = open(inFile, O_RDONLY | O_NONBLOCK); 
-}
-
-void ESPNOW_csimPipe::send(const uint8_t *mac_addr, const uint8_t *data, int len) { //override
-	int fdOut = open(outFilename, O_WRONLY | O_NONBLOCK); 
-	if(fdOut > 0) {
-		int n = ::write(fdOut, data, len);
-		if (n <= 0) { 
-			printf("write returned %d", n);
-
-		}
-	}
-	close(fdOut);
-}
-
-void ESPNOW_csimPipe::loop() { // override
-	static uint8_t mac[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-	char buf[512];
-	int n;
-	while(fdIn > 0 && (n = ::read(fdIn, buf, sizeof(buf))) > 0) { 
-		if (ESP32_esp_now_recv_cb != NULL) {
-			ESP32_esp_now_recv_cb(mac, (uint8_t *)buf, n);
-		}	
-	}
-} 
-
-int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
-	if (ESP32_esp_now_send_cb != NULL)
-		ESP32_esp_now_send_cb(mac, ESP_NOW_SEND_SUCCESS); 
-	if (ESPNOW_sendHandler != NULL) 
-		ESPNOW_sendHandler->send(mac, data, len); 
-	return ESP_OK; 
-}
-
 void FakeCAN::run() { 
 	if (callback == NULL || !simFile) 
 		return;
@@ -387,7 +429,7 @@ int FakeCAN::read() {
 		if (p == NULL) return 0;
 	}
 	unsigned int rval;
-	char b[3];
+	char b[4];
 	b[0] = *(p + 1 + (packetByteIndex % 8) * 2);
 	b[1] = *(p + 2 + (packetByteIndex % 8) * 2);
 	b[3] = 0;

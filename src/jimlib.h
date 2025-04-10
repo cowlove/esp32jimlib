@@ -906,12 +906,8 @@ class DeepSleepManager {
 	typedef std::function<void(uint32_t)> Callback;
 	vector<Callback> callbacks; 	
 public:
-	void onDeepSleep(Callback f) { 
-		callbacks.push_back(f); 
-	}
-	void prepareSleep(uint32_t ms) {
-		for(auto f : callbacks) f(ms);
-	}
+	void onDeepSleep(Callback f) { 	callbacks.push_back(f); }
+	void prepareSleep(uint32_t ms) { for(auto f : callbacks) f(ms); }
 	void deepSleep(uint32_t ms);
 };
 
@@ -950,5 +946,19 @@ struct LightSleepPWM {
 	int getDuty();
 };
 
+
+class SimulatedFailureManager { 
+	DeepSleepElapsedTimer ms;
+	struct FailSpec;
+	vector<FailSpec> failList;
+public:
+	SimulatedFailureManager();
+	void addFailure(const string &spec);
+	void addFailure(const string &name, float chance, float duty, float period, float start=0);
+	bool fail(const string &name);
+};
+
+SimulatedFailureManager &simFailures();
+#define SIMFAILURE(x) simFailures().fail(x)
 //#endif
 #endif //#ifndef INC_JIMLIB_H

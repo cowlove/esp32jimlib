@@ -23,12 +23,13 @@ class FailRetryInterval {
     SPIFFSVariable<int> spiffsConsecutiveFails;
     typedef vector<pair<int, FailActions::FailAction>> FailActionList;
     FailActionList failStrategy;
+    string name;
 public:
     int failCount() { return spiffsConsecutiveFails; }
     void reset() { spiffsConsecutiveFails = 0; }
     float defaultWaitMin;
     void setFailStrategy(FailActionList l) { failStrategy = l; };
-    FailRetryInterval(const string &prefix = "", float _defaultWaitMin = 1);
+    FailRetryInterval(const string &name = "", const string &prefix = "", float _defaultWaitMin = 1);
     void reportStatus(bool success);
     float getWaitMinutes(float defaultMin = -1);
 };

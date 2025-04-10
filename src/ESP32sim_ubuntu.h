@@ -97,6 +97,7 @@ public:
 	uint64_t bootTimeUsec = 0;
 	double seconds = -1;
 	int resetReason = 0;
+	bool showArgs;
 	vector<ESP32sim_Module *> modules;
 	struct TimerInfo { 
 		uint64_t last;
@@ -106,6 +107,7 @@ public:
 	typedef vector<TimerInfo> timers;
 	void delayMicroseconds(long long us);
 	void main(int argc, char **argv);
+	void parseArgs(int argc, char **argv);
 	void exit();
 };
 
@@ -527,7 +529,7 @@ inline static int esp_sleep_enable_timer_wakeup(uint64_t t) { sleep_timer = t; r
 
 // TODO move all this to csim object
 typedef std::function<void(uint64_t usec)> deepSleepHookT;
-void onDeepSleep(deepSleepHookT func);
+void csim_onDeepSleep(deepSleepHookT func);
 void esp_deep_sleep_start();
 void esp_light_sleep_start();
 
@@ -807,9 +809,6 @@ class ESPNOW_csimInterface {
 public:
 	virtual void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) = 0;
 };
-extern ESPNOW_csimInterface *ESPNOW_sendHandler;
-extern esp_now_send_cb_t ESP32_esp_now_send_cb;
-extern esp_now_recv_cb_t ESP32_esp_now_recv_cb;
 
 // ESPNOW_csimOneProg: lightweight ESPNOW simluation framework where 
 // one sketch creates both a client and server object and calls them 
@@ -828,40 +827,17 @@ class ESPNOW_csimOneProg : public ESP32sim_Module, public ESPNOW_csimInterface {
 	struct SimPacket {
 		uint8_t mac[6];
 		string data;
-	 };
+	};
 	vector<SimPacket> pktQueue;
 public:
 	ESPNOW_csimOneProg() {}
-	void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) override {
-		SimPacket p; 
-		memcpy(p.mac, mac_addr, sizeof(p.mac));
-		const char *cp = (const char *)data;
-		p.data = string(cp, cp + data_len);
-		pktQueue.push_back(p);
-	}
-	virtual void loop() override {
-		for(auto pkt : pktQueue) {
-			if (ESP32_esp_now_recv_cb != NULL) {
-				ESP32_esp_now_recv_cb(pkt.mac, (const uint8_t *)pkt.data.c_str(), pkt.data.length());
-			}
-		}
-		pktQueue.clear();
-	} 
+	void send(const uint8_t *mac_addr, const uint8_t *data, int data_len) override;
+	virtual void loop() override;
 };
 
-// Higher fidelity ESPNOW simulation between two processes using named pipes
-//   example:
-//   ./csim --espnowPipe /tmp/fifo2 /tmp/fifo1 --mac fff1
-//   ./csim --espnowPipe /tmp/fifo1 /tmp/fifo2 --mac fff2
-
-class ESPNOW_csimPipe : public ESP32sim_Module, public ESPNOW_csimInterface {
-	int fdIn;
-	const char *outFilename;
-public:
-	ESPNOW_csimPipe(const char *inFile, const char *outF);
-	void send(const uint8_t *mac_addr, const uint8_t *data, int len) override;
-	void loop() override;
-};
+extern ESPNOW_csimInterface *ESPNOW_sendHandler;
+extern esp_now_send_cb_t ESP32_esp_now_send_cb;
+extern esp_now_recv_cb_t ESP32_esp_now_recv_cb;
 
 static inline int esp_wifi_internal_set_fix_rate(int, int, int) { return ESP_OK; } 
 static inline int esp_now_register_recv_cb(void *) { return ESP_OK; }	

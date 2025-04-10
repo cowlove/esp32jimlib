@@ -5,6 +5,7 @@
 #include <cctype>
 #include <locale>
 #ifndef CSIM
+#include <esp_now.h>
 #endif
 
 #include "jimlib.h"

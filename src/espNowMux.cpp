@@ -58,17 +58,17 @@ void ESPNowMux::check() {
     }
 }
 void ESPNowMux::onRecv(const uint8_t *mac, const uint8_t *data, int len) {
-lastReceiveUs = micros(); 
-for(auto i = callbacks.begin(); i != callbacks.end(); i++) { 
-    int prefixLen = i->prefix.length();
-    if (len > prefixLen && memcmp(data, i->prefix.c_str(), i->prefix.length()) == 0) {
-        if (i->dataReceived == false) { 
-            i->dataReceived = true;
-            memcpy(i->peerInfo.peer_addr, mac, sizeof(i->peerInfo.peer_addr));
-            esp_now_add_peer(&i->peerInfo);
-        } 
-        //Serial.printf("EspNOWMux::onRecv(%d)\n", len);
-        i->callback(mac, data + prefixLen, len - prefixLen);
+    lastReceiveUs = micros(); 
+    for(auto i = callbacks.begin(); i != callbacks.end(); i++) { 
+        int prefixLen = i->prefix.length();
+        if (len > prefixLen && memcmp(data, i->prefix.c_str(), i->prefix.length()) == 0) {
+            if (i->dataReceived == false) { 
+                i->dataReceived = true;
+                memcpy(i->peerInfo.peer_addr, mac, sizeof(i->peerInfo.peer_addr));
+                esp_now_add_peer(&i->peerInfo);
+            } 
+            //Serial.printf("EspNOWMux::onRecv(%d)\n", len);
+            i->callback(mac, data + prefixLen, len - prefixLen);
         }
     }
 }
@@ -84,6 +84,8 @@ void ESPNowMux::registerReadCallback(const char *prefix, std::function<void(cons
 
 void ESPNowMux::send(const char *prefix, const uint8_t *buf, int n, int tmo /*= 100*/) {
     check();
+    if (SIMFAILURE("espnow-tx") || SIMFAILURE("espnow"))
+        return;
     uint8_t *mac = broadcastAddress;
     for(auto i = callbacks.begin(); i != callbacks.end(); i++) { 
         if (!alwaysBroadcast && strcmp(prefix, i->prefix.c_str()) == 0)

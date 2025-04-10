@@ -695,3 +695,49 @@ bool HzTimer::hz(float h) {
 		}
 	return rval;
 }
+
+struct SimulatedFailureManager::FailSpec {
+	const string name;
+	float chance, duty, period, start;
+};	
+SimulatedFailureManager::SimulatedFailureManager() : ms("/simFail.ms") {}
+
+void SimulatedFailureManager::addFailure(const string &name, float chance, float duty, float period, float start/*=0*/) { 
+	FailSpec fs = {.name = name, .chance = chance, .duty = duty, .period = period, .start = start};
+	failList.push_back(fs);
+}
+void SimulatedFailureManager::addFailure(const string &spec) { 
+	float chance = 0, duty = 1.0, period = 60, start = 0;
+	float periodMin = 0, startMin = 0;
+	vector<string> words = split(spec, '=');
+	if (words.size() != 2) { 
+		OUT("bad fail spec '%s'", spec.c_str());
+		return;
+	} 
+	string name = words[0];
+	sscanf(words[1].c_str(),"%f,%f,%f,%f", &chance, &duty, &period, &start);
+	sscanf(words[1].c_str(),"%f,%f,%f,%f", &chance, &duty, &periodMin, &startMin);
+	if (periodMin > 0) period = periodMin * 60;
+	if (startMin > 0) startMin = startMin * 60;
+	addFailure(name, chance, duty, period, start);
+}
+bool SimulatedFailureManager::fail(const string &n) { 
+	float now = ms.elapsed() / 1000.0;
+	for(auto f: failList) { 
+		if(f.name == n) {
+			if (now < f.start) 
+				continue;
+			float x = (now - f.start) / f.period;
+			if (x - floor(x) > f.duty) 
+				continue;
+			if (rand() / (RAND_MAX + 1.0) < f.chance) 
+				return true;
+		}	
+	}	
+	return false;
+}
+
+SimulatedFailureManager &simFailures() { 
+	static SimulatedFailureManager *firstStaticUse = new SimulatedFailureManager();
+	return *firstStaticUse;
+}

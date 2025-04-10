@@ -618,11 +618,8 @@ String buf2str(const byte *buf, int len) {
 	return s;
 }
   
-#include "espNowMux.h"
 extern JStuff j;
-void wifiDisconnect() {
-	if (ESPNowMux::Instance != NULL)
-		ESPNowMux::Instance->stop();
+void wifiDisconnect() { 
     WiFi.disconnect();
     WiFi.mode(WIFI_OFF);
     j.jw.enabled = false;

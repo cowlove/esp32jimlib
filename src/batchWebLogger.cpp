@@ -199,7 +199,7 @@ BatchWebLogger::BatchWebLogger(const string &prefix/* = ""*/) :
     postFailTimer("BatchWebLogger", string("/") + prefix + ".pstFailTmr") {
 }
 
-JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
+JsonDocument BatchWebLogger::post(DataMap &hdrDoc) {
     JsonDocument rval; 
     if (!wifiConnect()) {
         // broken you can't reset the report timer with TSLP values still in the log
@@ -339,7 +339,7 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
     return rval;
 }
 
-JsonDocument BatchWebLogger::log(JsonDocument doc, JsonDocument adminDoc, 
+BatchWebLogger::DataMap BatchWebLogger::log(DataMap &doc, DataMap &adminDoc, 
     bool forcePost /*= false*/, bool inhibitPost /*= false*/) {
     //OUT("%09.3f log() forcePost %d, reportTimer %.1f postPeriodMinutes %.1f", deepsleepMs.millis()/1000.0, 
     //forcePost, postPeriodTimer.elapsed()/1000.0, postFailTimer.getWaitMinutes());

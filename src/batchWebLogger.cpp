@@ -225,6 +225,7 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
 
     HTTPClient client;
     const string url = getServerName() + "/log";
+    OUT("Connecting to %s...", url.c_str());
     int r = client.begin(url.c_str());
     client.addHeader("Content-Type", "application/json");
     fflush(stdout);
@@ -274,6 +275,7 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
 
         for(int retry = 0; retry < 5; retry ++) {
             wdtReset();
+            OUT("Posting...");
             r = client.POST(post.c_str());
             String resp =  client.getString();
             deserializeJson(rval, resp.c_str());
@@ -310,6 +312,7 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
         spiffsReportLog.trimLinesFromFront(batchSize);
     }
     client.end();
+    wifiDisconnect();
     postPeriodTimer.reset();
     postFailTimer.reportStatus(fail == false);
 

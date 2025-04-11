@@ -681,6 +681,8 @@ void LightSleepPWM::ledcLightSleepSet(int i) {
 	ledc_update_duty(LEDC_LS_MODE, chan);
 #if SOC_PM_SUPPORT_RTC_PERIPH_PD
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_AUTO);
+#else
+#warning chip does not support light sleep
 #endif
 	delay(100);
 	//printf("Frequency %u Hz duty %d\n", 

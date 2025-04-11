@@ -319,7 +319,7 @@ public:
             retries++;
             printf("%09.3f DHT read failure t:%.2f h:%.2f, retry #%d, total retries %d\n", millis()/1000.0, t, h, r, retries);
             wdtReset();
-            delay(200);
+            delay(500);
         } 
         return sfmt("%.2f,%.2f,%d", t, h, retries);
     }

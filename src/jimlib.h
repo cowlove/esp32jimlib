@@ -260,7 +260,7 @@ public:
 	};
 	std::vector<ApInfo> aps = {	{"Ping-582B", "", ""}, 
 			{"ChloeNet", "niftyprairie7", ""},
-			//{"MOF-Guest", "", ""},
+			{"MOF-Guest", "", ""},
 			{"ClemmyNet","clementine is a cat", "192.168.68.138"},
 			{"ChloeNet4", "niftyprairie7", ""},
 			{"Station 54", "Local1747", ""}, 

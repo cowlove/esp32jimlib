@@ -294,9 +294,9 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
             if (r == 200) 
                 break;
             client.end();
-            wifiDisconnect();
+            //wifiDisconnect();
             delay(1000);
-            wifiConnect();
+            //wifiConnect();
             client.begin(url.c_str());
             client.addHeader("Content-Type", "application/json");
         }

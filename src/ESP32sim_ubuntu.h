@@ -601,6 +601,8 @@ class HTTPClient {
 	string header1, header2, response, url;
 	WiFiClient wc;
 public:
+	void setTimeout(int) {}
+	void setConnectTimeout(int) {}
     int begin(const char *url) { this->url = url; return 0; }
 	int begin(WiFiClientSecure, const char *) { return 0; }
 	String getString() { return String(response.c_str()); }

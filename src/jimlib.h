@@ -270,7 +270,7 @@ public:
 		uint32_t startMs = millis();
 		while(millis() - startMs < ms) { 
 			if (WiFi.status() == WL_CONNECTED) {
-				Serial.printf("Connected\n");
+				printf("Connected\n");
 				if (bestMatch >= 0) lastAP = bestMatch;
 				return true;
 			}

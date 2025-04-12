@@ -224,6 +224,8 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
     //adminDoc["AVER"] = ESP_ARDUINO_VERSION_STR;
 
     HTTPClient client;
+    client.setTimeout(10000); // default is 5000
+    client.setConnectTimeout(10000); // default is 5000
     const string url = getServerName() + "/log";
     OUT("Connecting to %s...", url.c_str());
     int r = client.begin(url.c_str());
@@ -293,12 +295,14 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
             OUT("http.POST returned %d: %s", r, resp.c_str());
             if (r == 200) 
                 break;
-            client.end();
-            //wifiDisconnect();
+            if (retry >= 1) { 
+                client.end();
+                //wifiDisconnect();
+                //wifiConnect();
+                client.begin(url.c_str());
+                client.addHeader("Content-Type", "application/json");
+            }
             delay(1000);
-            //wifiConnect();
-            client.begin(url.c_str());
-            client.addHeader("Content-Type", "application/json");
         }
         if (r != 200) {  
             fail = true;

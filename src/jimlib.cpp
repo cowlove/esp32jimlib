@@ -179,11 +179,11 @@ void webUpgrade(const char *u) {
 	while(true) { 
 		wdtReset();
 		String url = String(u) + Sfmt("?len=%d&offset=%d", len, offset);
-		dbg("offset %d, len %d, url %s", offset, len, url.c_str());
+		OUT("offset %d, len %d, url %s", offset, len, url.c_str());
 		//client.begin(wc, url);
 		client.begin(url);
 		int resp = client.GET();
-		//dbg("HTTPClient.get() returned %d", resp);
+		OUT("HTTPClient.get() returned %d", resp);
 		if(resp != 200) {
 			wdtReset();
 			dbg("Get failed\n");

@@ -316,7 +316,6 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
         spiffsReportLog.trimLinesFromFront(batchSize);
     }
     client.end();
-    wifiDisconnect();
     postPeriodTimer.reset();
     postFailTimer.reportStatus(fail == false);
 

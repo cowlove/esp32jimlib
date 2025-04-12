@@ -802,7 +802,7 @@ public:
 	}
 	void begin() { 
 		beginRan = true;
-		wdtInit(15);
+		wdtInit(30);
 		SPIFFSVariableESP32Base::begin();
 
 		Serial.begin(115200);

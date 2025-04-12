@@ -177,7 +177,7 @@ void webUpgrade(const char *u) {
 	Serial.println("Updating firmware...");
 
 	while(true) { 
-		esp_task_wdt_reset();
+		wdtReset();
 		String url = String(u) + Sfmt("?len=%d&offset=%d", len, offset);
 		dbg("offset %d, len %d, url %s", offset, len, url.c_str());
 		//client.begin(wc, url);
@@ -185,6 +185,7 @@ void webUpgrade(const char *u) {
 		int resp = client.GET();
 		//dbg("HTTPClient.get() returned %d", resp);
 		if(resp != 200) {
+			wdtReset();
 			dbg("Get failed\n");
 			Serial.print(client.getString());
 			delay(5000);

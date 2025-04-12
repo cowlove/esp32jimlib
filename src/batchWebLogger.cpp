@@ -316,14 +316,13 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
         spiffsReportLog.trimLinesFromFront(batchSize);
     }
     client.end();
-    wifiDisconnect();
     postPeriodTimer.reset();
     postFailTimer.reportStatus(fail == false);
 
-    if (fail == true) { 
-        OUT("SleepyLogger repeat posts failed");
-        return rval;
-    }
+    //if (fail == true) { 
+    //    OUT("SleepyLogger repeat posts failed");
+    //    return rval;
+    //}
 
     const char *ota_ver = rval["ota_ver"];
     if (ota_ver != NULL) { 

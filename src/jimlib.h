@@ -247,12 +247,12 @@ struct SPIFFSVariableFake {
 
 class JimWiFi { 
 	EggTimer report = EggTimer(1000);
-	bool firstRun = true, firstConnect = true;
 	std::function<void(void)> connectFunc = NULL;
 	std::function<void(void)> otaFunc = NULL;
 	// TODO: move this into JimWifi
 	SPIFFSVariable<int> lastAP = SPIFFSVariable<int>("/lastap", -1);
 public:
+	bool firstRun = true, firstConnect = true;
 	struct ApInfo {
 		const char *name;
 		const char *pass;
@@ -288,24 +288,24 @@ public:
 			return;
 		//WiFi.disconnect(true);
 		//WiFi.mode(WIFI_STA);
-		//WiFi.setSleep(false);
+		WiFi.setSleep(false);
 		//delay(100);
 
 		int bestMatch = lastAP;
 		if (bestMatch >= 0 && bestMatch < aps.size()) { 
 			Serial.printf("Trying cached WiFi AP '%s'...\n", aps[bestMatch].name);
 			WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
-			if (waitConnected(2000)) return;
-			WiFi.disconnect();
-			WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
-			if (waitConnected(2000)) return;
+			if (waitConnected(8000)) return;
+			//WiFi.disconnect();
+			//WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+			//if (waitConnected(2000)) return;
 		}
 		bestMatch = -1;
 
 		Serial.println("Scanning...");
 		WiFi.disconnect(true);
 		//WiFi.mode(WIFI_STA);
-		//WiFi.setSleep(false);
+		WiFi.setSleep(false);
 		//delay(1000);
 		wdtReset();
 		int n = WiFi.scanNetworks();
@@ -334,12 +334,14 @@ public:
 		}
 		WiFi.scanDelete();
 		Serial.printf("Using WiFi AP '%s'...\n", aps[bestMatch].name);
-		WiFi.disconnect();
+		//WiFi.disconnect();
+		delay(100);
 		WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
-		if (waitConnected(2000, bestMatch)) return;
-		WiFi.disconnect();
-		WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
-		waitConnected(12000, bestMatch); 
+		waitConnected(20000, bestMatch);
+		//if (waitConnected(20000, bestMatch)) return;
+		//WiFi.disconnect();
+		//WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+		//waitConnected(12000, bestMatch); 
 	}
 public:
     bool updateInProgress = false;

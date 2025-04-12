@@ -634,6 +634,7 @@ bool wifiConnect() {
     j.jw.enabled = true;
     j.mqtt.active = false;
     j.jw.onConnect([](){});
+	j.jw.firstRun = j.jw.firstConnect = false;
     j.jw.autoConnect();
     for(int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) { 
         delay(500);
@@ -679,7 +680,7 @@ void LightSleepPWM::ledcLightSleepSetup(int p, ledc_channel_t c) {
 void LightSleepPWM::ledcLightSleepSet(int i) { 
 	ledc_set_duty(LEDC_LS_MODE, chan, i);
 	ledc_update_duty(LEDC_LS_MODE, chan);
-#if SOC_PM_SUPPORT_RTC_PERIPH_PD
+#if SOC_PM_SUPPORT_RTC_PERIPH_PD || defined(CSIM)
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_AUTO);
 #else
 #warning chip does not support light sleep

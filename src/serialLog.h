@@ -4,8 +4,6 @@
 class SerialLogManager {
     DeepSleepElapsedTimer dsTime = DeepSleepElapsedTimer("/SerLogMan");
     uint32_t options;
-    const char *file = "";
-    int line;
 public:
     SerialLogManager(int _options = 0) : options(_options) {}
     static const int showMillis = 0x1;
@@ -14,14 +12,13 @@ public:
     static const int showBar = 0x8;
     void setOptions(uint32_t x) { options |= x; } 
     void clearOptions(uint32_t x) { options &= ~x; } 
-    void vout(const char *format, va_list args); 
-    void out(const char *format, ...);
-    void setPos(const char *f, int l) { file = f; line = l;}
+    void vout(const char *file, int line, const char *format, va_list args); 
+    void out(const char *file, int line, const char *format, ...);
 }; 
 
 extern SerialLogManager serialLog;
 
-#define OUT serialLog.setPos(__FILE__,__LINE__),serialLog.out
-#define LOG serialLog.setPos(__FILE__,__LINE__),serialLog.out
+#define OUT(...) serialLog.out(__FILE__, __LINE__, __VA_ARGS__)
+#define LOG OUT
 static inline void dbg(const char *(format), ...) { }
 

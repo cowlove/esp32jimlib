@@ -280,7 +280,7 @@ void MQTTClient::reconnect() {
 		client->setCallback([this](char* topic, byte* p, unsigned int l) {
 			this->callBack(topic, p, l);
 		});
-		std::string s = strfmt("MQTT connected uptime %.1f sec %s %s %s " GIT_VERSION " built " __DATE__ " " __TIME__ , 
+		std::string s = strfmt("MQTT connected uptime %.1f sec %s %s %s " GIT_VERSION, 
 			millis() / 1000.0, getMacAddress().c_str(),  
 			WiFi.localIP().toString().c_str(), basename_strip_ext(__BASE_FILE__).c_str());
 		publish("sys", s.c_str());
@@ -290,6 +290,7 @@ void MQTTClient::reconnect() {
 		Serial.print(client->state());
 	}
 }
+
 void MQTTClient::dprintf(const char *format, ...) { 
 	va_list args;
 	va_start(args, format);
@@ -763,4 +764,175 @@ string floatRemoveTrailingZeros(string &s) {
     //s = regex_replace(s, regex("[.][0]+\""), "\"");
     //s = regex_replace(s, regex("[.][0]+,"), ",");
     return s;
+}
+
+
+void JStuff::	run() { 
+	if (beginRan == false)
+		begin();
+	//quickRebootCounter.run();
+	lastRun = thisRun;
+	thisRun = micros();
+	forceTicksNow = false;
+
+	wdtReset();
+	jw.run(); 
+	wdtReset();
+	mqtt.run(); 
+	led.run();
+	while(parseSerial == true && Serial.available()) { 
+		lb.add(Serial.read(), [this](const char *l) {
+			string r = cli.process(l);
+			if (cliEcho) 
+				Serial.println(r.c_str());
+		});
+	}
+}
+void JStuff::begin() { 
+	beginRan = true;
+	wdtInit(30);
+	SPIFFSVariableESP32Base::begin();
+
+	Serial.begin(115200);
+	Serial.printf("BOOT %s git:" GIT_VERSION " mac:%s time:%05.3fs rst rsn: %d\n", 
+		basename_strip_ext(__BASE_FILE__).c_str(), getMacAddress().c_str(), millis() / 1000.0, 
+		getResetReason());
+	getLedPin();
+	//led.setPercent(30);
+	jw.onConnect([this](){
+		led.setPattern(500, 2);
+		const char *mqttServer = jw.getMqttServer();
+		if (mqttServer != NULL && strlen(mqttServer)) {
+			 mqtt.begin(mqttServer, basename_strip_ext(__BASE_FILE__).c_str());
+		}
+		if (WiFi.SSID() == "ClemmyNet" || WiFi.SSID() == "FakeWiFi") {
+			jw.debug = mqtt.active = true;  
+			out("JStuff: forcing debug and mqtt.active due to WiFi network");
+		 }
+		Serial.printf("Connected to AP '%s' in %dms, IP=%s, channel=%d, RSSI=%d\n",
+			WiFi.SSID().c_str(), millis(), WiFi.localIP().toString().c_str(), WiFi.channel(), WiFi.RSSI());
+		if (onConn != NULL) { 
+			onConn();
+		}
+	});
+	mqtt.setCallback([this](String t, String m) {
+		string r = cli.process(m.c_str());
+		if (cliEcho) 
+			mqtt.pub(r.c_str());
+	});
+}
+void JStuff::out(const string &s) { 
+	mqtt.pub(s.c_str());
+	printf("%s", s.c_str());
+	printf("\n");
+	jw.udpDebug(s.c_str());
+}
+void JStuff::out(const char *format, ...) { 
+	va_list args;
+	va_start(args, format);
+	string s = vsfmt(format, args);
+	va_end(args);
+	out(s);
+}
+void JStuff::log(int ll, const char *format, ...) { 
+	if (logLevel < ll) 
+		return; 
+	va_list args;
+	va_start(args, format);
+	string s = vsfmt(format, args);
+	va_end(args);
+	mqtt.pub(s.c_str());
+	Serial.println(s.c_str());
+	//jw.udpDebug(buf);
+}
+
+JimWiFi::JimWiFi() { 
+	aps = {	
+		{"Ping-582B", "", ""},
+		{"ChloeNet", "niftyprairie7", ""},
+		{"MOF-Guest", "", ""},
+		{"ClemmyNet","clementine is a cat", "192.168.68.138"},
+		{"ChloeNet4", "niftyprairie7", ""},
+		{"Station 54", "Local1747", ""},
+	};
+}
+
+bool JimWiFi::waitConnected(int ms, int bestMatch/* = -1*/) {
+	uint32_t startMs = millis();
+	while(millis() - startMs < ms) {
+		if (WiFi.status() == WL_CONNECTED) {
+			printf("Connected\n");
+			if (bestMatch >= 0) lastAP = bestMatch;
+			return true;
+		}
+		wdtReset();
+		delay(100);
+	}
+	return false;
+}
+
+const char *JimWiFi::getMqttServer() {
+	if (lastAP >= 0) return aps[lastAP].mqtt;
+	return NULL;
+}
+
+void JimWiFi::autoConnect() {
+	if (!enabled)
+		return;
+	//WiFi.disconnect(true);
+	//WiFi.mode(WIFI_STA);
+	WiFi.setSleep(false);
+	//delay(100);
+
+	int bestMatch = lastAP;
+	if (bestMatch >= 0 && bestMatch < aps.size()) {
+	Serial.printf("Trying cached WiFi AP '%s'...\n", aps[bestMatch].name);
+	WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+	if (waitConnected(8000)) return;
+		//WiFi.disconnect();
+		//WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+		//if (waitConnected(2000)) return;
+	}
+	bestMatch = -1;
+
+	Serial.println("Scanning...");
+	WiFi.disconnect(true);
+	//WiFi.mode(WIFI_STA);
+	WiFi.setSleep(false);
+	//delay(1000);
+	wdtReset();
+	int n = WiFi.scanNetworks();
+	wdtReset();
+	Serial.println("scan done");
+
+	if (n == 0) {
+		Serial.println("no networks found");
+	} else {
+		Serial.printf("%d networks found\n", n);
+		for (int i = 0; i < n; ++i) {
+			// Print SSID and RSSI for each network found
+			// TODO handle the trailing space in some AP names
+			Serial.printf("%3d: %s (%d)\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+			for (int j = 0; j < aps.size(); j++) {
+				if (strcmp(WiFi.SSID(i).c_str(), aps[j].name) == 0) {
+					if (bestMatch == -1 || j < bestMatch) {
+						bestMatch = j;
+					}
+				}
+			}
+		}
+	}
+	if (bestMatch == -1) {
+		bestMatch = 0;
+	}
+	WiFi.scanDelete();
+	Serial.printf("Using WiFi AP '%s'...\n", aps[bestMatch].name);
+	//WiFi.disconnect();
+	delay(100);
+	WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+	waitConnected(20000, bestMatch);
+	//if (waitConnected(20000, bestMatch)) return;
+	//WiFi.disconnect();
+	//WiFi.begin(aps[bestMatch].name, aps[bestMatch].pass);
+	//waitConnected(12000, bestMatch);
 }

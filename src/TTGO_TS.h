@@ -115,7 +115,7 @@ public:
 		queue = xQueueCreate(len, sizeof(T));
 		writeBuf = new T[writeBlockSz];
 		this->textMode = textMode;
-		xTaskCreate(SDCardBufferedLogThread<T>, "SDCardBufferedLogThread", 8192, (void *)this, tskIDLE_PRIORITY, NULL );   
+		xTaskCreate(SDCardBufferedLogThread<T>, "SDCardBufferedLogThread", 4 * 1024, (void *)this, tskIDLE_PRIORITY, NULL );   
 	}
 	~SDCardBufferedLog() { 
 		 this->exit();
@@ -245,6 +245,7 @@ public:
 
 template <class T>
 void SDCardBufferedLogThread(void *p) {
+	wdtAdd();
 	((SDCardBufferedLog<T> *)p)->thread(); 
 }
 
@@ -337,30 +338,20 @@ public:
 #ifndef CSIM
 	Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 	void begin() {
-		Serial.printf("%d\n", __LINE__); 
 		{
-			Serial.printf("%d\n", __LINE__); 
 			//ScopedMutex lock(mutexSPI);
-			Serial.printf("%d\n", __LINE__); 
 			pinMode(27,OUTPUT); 		//Backlight:27  TODO:JIM 27 appears to be an external pin 
-			Serial.printf("%d\n", __LINE__); 
 			digitalWrite(27,HIGH);		//New version added to backlight control
-			Serial.printf("%d\n", __LINE__); 
+			delay(100); // break for interrupts so not to trigger wdt interrupt timer
 			tft.initR(INITR_18GREENTAB);                             // 1.44 v2.1
-			Serial.printf("%d\n", __LINE__); 
 			tft.fillScreen(ST7735_BLACK);                            // CLEAR
-			Serial.printf("%d\n", __LINE__); 
 			tft.setTextColor(ST7735_YELLOW, ST7735_BLACK);           // GREEN
-			Serial.printf("%d\n", __LINE__); 
 			tft.setRotation(1);
-			Serial.printf("%d\n", __LINE__); 
 			tft.setTextSize(textSize); 
-			Serial.printf("%d\n", __LINE__); 
 		}
-		Serial.printf("%d\n", __LINE__); 
 		initTextBuffer();
 		forceUpdate();
-		xTaskCreate(JDisplayUpdateThread, "JDisplayUpdateThread", 8192, this, tskIDLE_PRIORITY, NULL);
+		xTaskCreate(JDisplayUpdateThread, "JDisplayUpdateThread", 4 * 1024, this, tskIDLE_PRIORITY, NULL);
 	}
 	void clear() {
 		ScopedMutex lock(mutexSPI);
@@ -681,7 +672,7 @@ void JDisplayUpdateThread(void *p) {
 	JDisplay *jd = (JDisplay *)p;
 	jd->forceUpdate();
 #ifndef UBUNTU	
-	//esp_task_wdt_delete(NULL);	
+	wdtAdd();
 	while(true) {
 		jd->waitChange(10); 
 		wdtReset();

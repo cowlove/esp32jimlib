@@ -58,6 +58,9 @@ void wdtInit(int sec) {
 #endif
 }
 
+void wdtAdd() { 
+	esp_task_wdt_add(NULL);
+}
 void wdtReset() { 
 	esp_task_wdt_reset();
 }

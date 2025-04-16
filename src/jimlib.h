@@ -12,7 +12,9 @@
 #include "driver/adc.h"
 #include "driver/ledc.h"
 #include <rom/uart.h>
-
+#if ESP_ARDUINO_VERSION_MAJOR == 3 
+#include <esp_mac.h>
+#endif
 
 // starting jimlib.cpp cleanup
 // Sketch uses 1346572 bytes (68%) of program storage space. Maximum is 1966080 bytes.
@@ -38,6 +40,7 @@ using std::string;
 using std::pair;
 
 void wdtInit(int sec);
+void wdtAdd();
 void wdtReset();
 void ledcInit(int pin, int freq, int res, int channel);
 

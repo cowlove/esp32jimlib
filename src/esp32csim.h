@@ -1013,19 +1013,12 @@ public:
 	bool getGnssFixOk() { return true; }
 };
 
-
-void setup(void);
-void loop(void);
-
-
-int main(int argc, char **argv);
-
+#define DHT22 0
 struct sensors_event_t {
 	float temperature = -1;
 	float relative_humidity = -1;
 };
 
-#define DHT22 0
 struct DHT_Unified {
 	struct response { void getEvent(sensors_event_t *) {} } resp;
 	DHT_Unified(int, int) {}  
@@ -1048,5 +1041,17 @@ struct DHT {
     float readHumidity(bool f = false) { return csim().humidity[pin]; }
 };
 
+class SimulatedFailureManager {
+	struct FailSpec;
+	vector<FailSpec> failList;
+public:
+	SimulatedFailureManager();
+	void addFailure(const string &spec);
+	void addFailure(const string &name, float chance, float duty, float period, float start=0);
+	bool fail(const string &name);
+};
+
+SimulatedFailureManager &simFailures();
+#define SIMFAILURE(x) simFailures().fail(x)
 
 #endif // #ifdef _ESP32SIM_UBUNTU_H_

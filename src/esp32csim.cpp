@@ -1,14 +1,21 @@
 #ifdef CSIM
 #include "esp32csim.h"
+#include <assert.h>
 
-uint64_t _micros = 0;
-uint64_t _microsMax = 0xffffffff;
+// TODO move failure modes into esp32csim.h 
 #include "jimlib.h"
 
-int Semaphores[10];
+void setup(void);
+void loop(void);
+uint64_t _micros = 0;
+uint64_t _microsMax = 0xffffffff;
+
+static const int MAX_SEMAPHORES = 32;
+int Semaphores[MAX_SEMAPHORES];
 int nextSem = 0;
 int xSemaphoreCreateCounting(int max, int init) { 
 	Semaphores[nextSem] = init;
+	assert(nextSem < MAX_SEMAPHORES);
 	return nextSem++;
 } 
 int xSemaphoreCreateMutex() { return xSemaphoreCreateCounting(1, 1); } 
@@ -22,6 +29,7 @@ int xSemaphoreTake(int h, int delay) {
 }
 int uxSemaphoreGetCount(int h) { return Semaphores[h]; }
 
+// TODO move this to pinManager
 int Csim_currentPwm[16];
 void ledcWrite(int chan, int val) {
 		Csim_currentPwm[chan] = val;
@@ -42,15 +50,16 @@ InterruptManager intMan;
 FakeESP ESP;
 FakeArduinoOTA ArduinoOTA;
 FakeSPIFFS SPIFFS, LittleFS;
-Csim &sim() { 
-	static Csim *staticFirstUse = new Csim();
-	return *staticFirstUse;
-}
 FakeWiFi WiFi;
 FakeSD SD;
 FakeWire Wire;
 Update_t Update;
 FakeCAN CAN;
+
+Csim &sim() { 
+	static Csim *staticFirstUse = new Csim();
+	return *staticFirstUse;
+}
 
 Csim_flags csim_flags;
 
@@ -183,7 +192,7 @@ void ESPNOW_csimOneProg::loop() { // override
 	pktQueue.clear();
 } 
 
-// Higher fidelity ESPNOW simulation between two processes using named pipes
+// Higher fidelity ESPNOW simulation between two sketch processes using named pipes
 //   example:
 //   ./csim --espnowPipe /tmp/fifo2 /tmp/fifo1 --mac fff1
 //   ./csim --espnowPipe /tmp/fifo1 /tmp/fifo2 --mac fff2
@@ -436,6 +445,53 @@ int FakeCAN::read() {
 	packetByteIndex++;
 	return rval; 
 }
+
+struct SimulatedFailureManager::FailSpec {
+	const string name;
+	float chance, duty, period, start;
+};	
+SimulatedFailureManager::SimulatedFailureManager() {}
+
+void SimulatedFailureManager::addFailure(const string &name, float chance, float duty, float period, float start/*=0*/) { 
+	FailSpec fs = {.name = name, .chance = chance, .duty = duty, .period = period, .start = start};
+	failList.push_back(fs);
+}
+void SimulatedFailureManager::addFailure(const string &spec) { 
+	float chance = 0, duty = 1.0, period = 60, start = 0;
+	float periodMin = 0, startMin = 0;
+	vector<string> words = split(spec, '=');
+	if (words.size() != 2) { 
+		printf("bad fail spec '%s'", spec.c_str());
+		return;
+	} 
+	string name = words[0];
+	sscanf(words[1].c_str(),"%f,%f,%f,%f", &chance, &duty, &period, &start);
+	sscanf(words[1].c_str(),"%f,%f,%f,%f", &chance, &duty, &periodMin, &startMin);
+	if (periodMin > 0) period = periodMin * 60;
+	if (startMin > 0) startMin = startMin * 60;
+	addFailure(name, chance, duty, period, start);
+}
+bool SimulatedFailureManager::fail(const string &n) { 
+	float now = (sim().bootTimeUsec + micros()) / 1000000.0;
+	for(auto f: failList) { 
+		if(f.name == n) {
+			if (now < f.start) 
+				continue;
+			float x = (now - f.start) / f.period;
+			if (x - floor(x) > f.duty) 
+				continue;
+			if (rand() / (RAND_MAX + 1.0) < f.chance) 
+				return true;
+		}	
+	}	
+	return false;
+}
+
+SimulatedFailureManager &simFailures() { 
+	static SimulatedFailureManager *firstStaticUse = new SimulatedFailureManager();
+	return *firstStaticUse;
+}
+
 
 
 #endif

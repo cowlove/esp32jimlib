@@ -798,19 +798,6 @@ struct LightSleepPWM {
 	int getDuty();
 };
 
-class SimulatedFailureManager {
-	DeepSleepElapsedTimer ms;
-	struct FailSpec;
-	vector<FailSpec> failList;
-public:
-	SimulatedFailureManager();
-	void addFailure(const string &spec);
-	void addFailure(const string &name, float chance, float duty, float period, float start=0);
-	bool fail(const string &name);
-};
-
-SimulatedFailureManager &simFailures();
-#define SIMFAILURE(x) simFailures().fail(x)
 
 string floatRemoveTrailingZeros(string &);
 

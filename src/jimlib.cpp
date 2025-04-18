@@ -21,8 +21,6 @@
 //#include <SPIFFS.h>
 //#define LittleFS SPIFFS
 #include <LittleFS.h>
-#else // #ifndef CSIM
-#include "ESP32sim_ubuntu.h" // sigh remove all static defs here too
 #endif // #ifndef CSIM
 
 void wdtReset();

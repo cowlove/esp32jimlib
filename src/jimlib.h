@@ -29,7 +29,7 @@ static inline void ledcAttachPin(int, int) {}
 static inline void ledcWrite(int, int) {}
 #endif //ESP32
 #else // !CSIM
-#include "ESP32sim_ubuntu.h"
+#include "esp32csim.h"
 #endif
 
 #define DEG2RAD(x) ((x)*M_PI/180)

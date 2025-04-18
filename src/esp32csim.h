@@ -81,7 +81,7 @@ public:
 	}
 };
 
-extern Csim_flags csim_flags;
+extern Csim_flags csim_flags; // TODO move into Csim
 
 class Csim {
 public:
@@ -222,7 +222,6 @@ struct FakeArduinoOTA {
 	void onError(function<void(int)>) {}
 	void onProgress(function<void(int, int)>) {}
 };
-
 extern FakeArduinoOTA ArduinoOTA;
 
 typedef int ota_error_t; 
@@ -243,7 +242,6 @@ struct FakeESP {
 	void restart() { Csim_exit(); }
 	uint32_t getChipId() { return 0xdeadbeef; }
 };
-
 extern FakeESP ESP;
 
 // stub out OneWireNg lib
@@ -289,7 +287,7 @@ static inline void uart_tx_wait_idle(int) {}
 static inline void esp_sleep_pd_config(int, int) {}
 #define ESP_PD_DOMAIN_RTC_PERIPH 0
 #define ESP_PD_OPTION_AUTO 0 
-extern int Csim_currentPwm[];
+extern int Csim_currentPwm[]; // TODO move into PinManager
 
 static inline void ledc_update_duty(int, int) {}
 //#define LEDC_LS_MODE 0
@@ -374,7 +372,7 @@ public:
 	}
 };
 
-extern InterruptManager intMan;
+extern InterruptManager intMan; // make a module, move into Csim
 
 static inline void pinMode(int, int) {}
 static inline void digitalWrite(int p, int v) { Csim_pinManager::manager->digitalWrite(p, v); };
@@ -523,19 +521,6 @@ void csim_onDeepSleep(deepSleepHookT func);
 void esp_deep_sleep_start();
 void esp_light_sleep_start();
 
-// stub out ArduinoJson library
-struct JsonResult { 
-	operator int()  { return 0; }
-	operator const char *() { return ""; }	
-};
-template<int N>
-struct StaticJsonDocument { 
-	JsonResult operator[] (const char *) { return JsonResult(); }
-};
-
-//typedef int DeserializationError;
-//int deserializeJson(StaticJsonDocument<1024>, String) { return 0; }
-
 struct FakeWiFi {
 	int simulatedFailMinutes = 0;  /* if n > 0 fail for a minute every nth minute */
 	int curStatus = WL_DISCONNECTED;
@@ -644,7 +629,7 @@ class PubSubClient : public Csim_Module {
 			events.push_back(e);
 		}
 	}
-	virtual void loop() override { 
+	void loop() override { 
 		for(vector<Event>::iterator i = events.begin(); i != events.end(); i++) {
 			if (i->sec < _micros / 1000000.0) { 
 				if (callback) { 
@@ -685,6 +670,7 @@ public:
 	void run() {}
 };
 
+// TODO make udp input stuff a module
 class WiFiUDP {
 	int port, txPort;
 	bool toSerial = false;
@@ -692,12 +678,7 @@ public:
 	void begin(int p) { port = p; }
 	int beginPacket(IPAddress, int p) { return beginPacket(NULL, p); }
 	int beginPacket(const char *, int p) { txPort = p; return 1; }
-	void write(const uint8_t *b, int len) {
-		float f;
-		if (txPort == 7892 && sscanf((const char *)b, "trim %f", &f) == 1) {
-			//Csim_pitchCmd = f;
-		}
-	}
+	void write(const uint8_t *b, int len) {}
 	int endPacket() { return 1; }
 
 	typedef vector<unsigned char> InputData;
@@ -729,18 +710,6 @@ public:
 	IPAddress remoteIP() { return IPAddress(); } 
 };
 
-// stub out Pinger library
-struct PingerResponse {
-	int ReceivedResponse = 0;
-};
-typedef std::function<bool (const PingerResponse &)>PingerCallback;
-struct FakePinger { 
-  void OnReceive(PingerCallback) {}
-  void Ping(IPAddress, int, int) {}
-};
-
-typedef FakePinger Pinger;
-
 static inline void Csim_udpInput(int p, const WiFiUDP::InputData &s) { 
 	WiFiUDP::InputMap &m = WiFiUDP::inputMap;
 	if (m.find(p) == m.end())
@@ -753,6 +722,18 @@ static inline void Csim_udpInput(int p, const string &s) {
 	Csim_udpInput(p, WiFiUDP::InputData(s.begin(), s.end()));
 } 
 
+// stub out Pinger library
+struct PingerResponse {
+	int ReceivedResponse = 0;
+};
+typedef std::function<bool (const PingerResponse &)>PingerCallback;
+struct FakePinger { 
+  void OnReceive(PingerCallback) {}
+  void Ping(IPAddress, int, int) {}
+};
+typedef FakePinger Pinger;
+
+
 // stub out NTPClient library
 struct NTPClient {
 	NTPClient(WiFiUDP &a) {}
@@ -763,7 +744,7 @@ struct NTPClient {
 	int getHours() { return millis() % (60 * 60 * 24 * 1000) / (60 * 60 * 1000); }
 	int getSeconds() { return millis() % (60 * 1000) / (1000); }
 	void setUpdateInterval(int) {}
-	String getFormattedTime() { return String("TIMESTRING"); }
+	String getFormattedTime() { return String("DUMMY_TIMESTRING"); }
 };
 
 // stub out Wire.h
@@ -854,6 +835,7 @@ static inline int esp_now_register_recv_cb(esp_now_recv_cb_t_v3 cb) { return ESP
 static inline int esp_wifi_config_espnow_rate(int, int) { return ESP_OK; }
 int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len);
 
+// Stub out MPU9250 library
 #define INV_SUCCESS 1
 #define INV_XYZ_GYRO 1
 #define INV_XYZ_ACCEL 1
@@ -901,6 +883,7 @@ public:
 
 typedef MPU9250_DMP MPU9250_asukiaaa;
 
+// stub out Update.h
 #define UPLOAD_FILE_START 0 
 #define UPLOAD_FILE_END 0 
 #define UPLOAD_FILE_WRITE 0 
@@ -950,6 +933,7 @@ class WebServer {
 	void handleClient() {}
 };
 
+// stub out CAN.h
 class FakeCAN {
 	typedef std::function<void(int)> callbackT;
 	callbackT callback = NULL;
@@ -979,7 +963,6 @@ public:
 	void setSimFile(const char *fn) { simFile.open(fn); }
 	void run();  
 };
-
 extern FakeCAN CAN;
 
 struct RTC_DS3231 {
@@ -1013,6 +996,7 @@ public:
 	bool getGnssFixOk() { return true; }
 };
 
+// stub out "DHT sensor library" lib
 #define DHT22 0
 struct sensors_event_t {
 	float temperature = -1;
@@ -1041,6 +1025,7 @@ struct DHT {
     float readHumidity(bool f = false) { return csim().humidity[pin]; }
 };
 
+// TODO figure out how to use this from ESP32 code without cluttering up esp32csim.h
 class SimulatedFailureManager {
 	struct FailSpec;
 	vector<FailSpec> failList;

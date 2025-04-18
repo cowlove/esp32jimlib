@@ -22,17 +22,13 @@ int xSemaphoreTake(int h, int delay) {
 }
 int uxSemaphoreGetCount(int h) { return Semaphores[h]; }
 
-
-
-int ESP32sim_currentPwm[16];
+int Csim_currentPwm[16];
 void ledcWrite(int chan, int val) {
-		ESP32sim_currentPwm[chan] = val;
+		Csim_currentPwm[chan] = val;
 } 
 
-
-ESP32sim_pinManager pinManObject;
-ESP32sim_pinManager *ESP32sim_pinManager::manager = &pinManObject;
-
+Csim_pinManager pinManObject;
+Csim_pinManager *Csim_pinManager::manager = &pinManObject;
 
 uint64_t csim_mac = 0xffeeddaabbcc;
 void esp_read_mac(uint8_t *out, int) {
@@ -41,14 +37,13 @@ void esp_read_mac(uint8_t *out, int) {
 	memcpy(out, p + 2, 6);
 }
 
-
 FakeSerial Serial, Serial1, Serial2;
 InterruptManager intMan;
 FakeESP ESP;
 FakeArduinoOTA ArduinoOTA;
 FakeSPIFFS SPIFFS, LittleFS;
-ESP32sim &esp32sim() { 
-	static ESP32sim *staticFirstUse = new ESP32sim();
+Csim &sim() { 
+	static Csim *staticFirstUse = new Csim();
 	return *staticFirstUse;
 }
 FakeWiFi WiFi;
@@ -57,21 +52,20 @@ FakeWire Wire;
 Update_t Update;
 FakeCAN CAN;
 
-DHT::Csim &DHT::csim() { static Csim *firstUse = new Csim(); return *firstUse; }
-ESP32sim_flags csim_flags;
+Csim_flags csim_flags;
 
-void ESP32sim_exit() { 	esp32sim().exit(); }
+void Csim_exit() { 	sim().exit(); }
 
 uint64_t sleep_timer = 0;
 vector<deepSleepHookT> deepSleepHooks;
 void csim_onDeepSleep(deepSleepHookT func) { deepSleepHooks.push_back(func); }
 void esp_deep_sleep_start() {
 	double newRunSec = -1;
-	if (esp32sim().seconds >= 0) {
-		newRunSec = esp32sim().seconds - (sleep_timer + _micros) / 1000000;
+	if (sim().seconds >= 0) {
+		newRunSec = sim().seconds - (sleep_timer + _micros) / 1000000;
 		if (newRunSec < 0) { 
 			fflush(stdout);
-			ESP32sim_exit();
+			Csim_exit();
 		}
 	}
 
@@ -79,7 +73,7 @@ void esp_deep_sleep_start() {
 	char *argv[128];
 	int argc = 0; 
 	// strip out all --boot-time, --seconds, --reset-reason and --show-args command line arguments
-	for(char *const *p = esp32sim().argv; *p != NULL; p++) {
+	for(char *const *p = sim().argv; *p != NULL; p++) {
 		if (strcmp(*p, "--boot-time") == 0) p++;
 		else if (strcmp(*p, "--seconds") == 0) p++;
 		else if (strcmp(*p, "-s") == 0) p++;
@@ -88,7 +82,7 @@ void esp_deep_sleep_start() {
 		else argv[argc++] = *p;
 	}
 	char bootTimeBuf[32], secondsBuf[32];
-	snprintf(bootTimeBuf, sizeof(bootTimeBuf), "%ld", esp32sim().bootTimeUsec + sleep_timer + _micros);
+	snprintf(bootTimeBuf, sizeof(bootTimeBuf), "%ld", sim().bootTimeUsec + sleep_timer + _micros);
 	argv[argc++] = (char *)"--boot-time";
 	argv[argc++] = bootTimeBuf; 
 	snprintf(secondsBuf, sizeof(secondsBuf), "%f", newRunSec);
@@ -103,8 +97,8 @@ void esp_deep_sleep_start() {
 void esp_light_sleep_start() {
 	delayMicroseconds(0); // run csim hooks 
 	_micros += sleep_timer; 
-	if (esp32sim().seconds > 0 && micros() / 1000000.0 > esp32sim().seconds)
-		ESP32sim_exit();
+	if (sim().seconds > 0 && micros() / 1000000.0 > sim().seconds)
+		Csim_exit();
 } 
 
 ESPNOW_csimInterface *ESPNOW_sendHandler = NULL;
@@ -163,6 +157,10 @@ int HTTPClient::csim_doPOSTorGET(bool isPost, const char *data, string &result) 
 //	{".*", true, csim_defaultOnPOST },
 //	{".*", false, csim_defaultOnGET }};
 
+DHT::CsimInterface &DHT::csim() { 
+	static CsimInterface *firstUse = new CsimInterface(); 
+	return *firstUse; 
+}
 
 // TODO: extend this to use vector<unsigned char> to handle binary data	
 WiFiUDP::InputMap WiFiUDP::inputMap;
@@ -190,7 +188,7 @@ void ESPNOW_csimOneProg::loop() { // override
 //   ./csim --espnowPipe /tmp/fifo2 /tmp/fifo1 --mac fff1
 //   ./csim --espnowPipe /tmp/fifo1 /tmp/fifo2 --mac fff2
 
-class ESPNOW_csimPipe : public ESP32sim_Module, public ESPNOW_csimInterface {
+class ESPNOW_csimPipe : public Csim_Module, public ESPNOW_csimInterface {
 	int fdIn;
 	const char *outFilename;
 public:
@@ -243,15 +241,15 @@ int esp_now_send(const uint8_t*mac, const uint8_t*data, size_t len) {
 }
 
 
-ESP32sim_Module::ESP32sim_Module() { 
-	esp32sim().modules.push_back(this);
+Csim_Module::Csim_Module() { 
+	sim().modules.push_back(this);
 }
 
 int main(int argc, char **argv) {
-	esp32sim().main(argc, argv);
+	sim().main(argc, argv);
 }
 
-void ESP32sim::parseArgs(int argc, char **argv) {
+void Csim::parseArgs(int argc, char **argv) {
 	for(char **a = argv; a < argv+argc; a++) {
 		if (strcmp(*a, "--serial") == 0) {
 			printf("--serial is depricated, use --serialConsole\n");
@@ -278,7 +276,7 @@ void ESP32sim::parseArgs(int argc, char **argv) {
 					int pin, clicks = 1, longclick = 0;
 					float tim;
 					sscanf(*(++a), "%f,%d,%d,%d", &tim, &pin, &clicks, &longclick);
-					ESP32sim_pinManager::manager->addPress(pin, tim, clicks, longclick);
+					Csim_pinManager::manager->addPress(pin, tim, clicks, longclick);
 		} else if (strcmp(*a, "--serialInput") == 0) {
 			float seconds;
 			sscanf(*(++a), "%f", &seconds);
@@ -288,12 +286,12 @@ void ESP32sim::parseArgs(int argc, char **argv) {
 			float seconds;
 			sscanf(*(++a), "%f", &seconds);
 			Serial2.scheduleInput(seconds * 1000, String(*(++a)) + "\n");
-		} else for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
+		} else for(vector<Csim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) {
 			(*it)->parseArg(a, argv + argc);
 		}
 	}
 }
-void ESP32sim::main(int argc, char **argv) {
+void Csim::main(int argc, char **argv) {
 	this->argc = argc;
 	this->argv = argv;
 	Serial.toConsole = true;
@@ -304,14 +302,14 @@ void ESP32sim::main(int argc, char **argv) {
 				printf("%s ", *a);
 		printf("\n");
 	}
-	for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
+	for(vector<Csim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
 		(*it)->setup();
 	setup();
 
 	uint64_t lastMillis = 0;
 	while(seconds <= 0 || _micros / 1000000.0 < seconds) {
 		uint64_t now = millis();
-		//for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
+		//for(vector<Csim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
 		for(auto it : modules) {
 			it->loop();
 		}
@@ -319,17 +317,17 @@ void ESP32sim::main(int argc, char **argv) {
 		intMan.run();
 
 		//if (floor(now / 1000) != floor(lastMillis / 1000)) { 
-		//	ESP32sim_JDisplay_forceUpdate();	
+		//	Csim_JDisplay_forceUpdate();	
 		//}
 		lastMillis = now;
 	}
 }
-void ESP32sim::exit() { 
-	for(vector<ESP32sim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
+void Csim::exit() { 
+	for(vector<Csim_Module *>::iterator it = modules.begin(); it != modules.end(); it++) 
 		(*it)->done();	
 	::exit(0);
 }
-void ESP32sim::delayMicroseconds(long long us) { 
+void Csim::delayMicroseconds(long long us) { 
 	do {
 		int step = min(100000LL, us);
 		_micros += step;
@@ -338,20 +336,20 @@ void ESP32sim::delayMicroseconds(long long us) {
 		}
 		intMan.run();
 		us -= step;
-		if (esp32sim().seconds > 0 && micros() / 1000000.0 > esp32sim().seconds)
-			ESP32sim_exit();
+		if (sim().seconds > 0 && micros() / 1000000.0 > sim().seconds)
+			Csim_exit();
 	} while(us > 0);
 }
 
-void delayMicroseconds(int m) { esp32sim().delayMicroseconds(m); }
+void delayMicroseconds(int m) { sim().delayMicroseconds(m); }
 
 uint32_t micros() { return _microsMax > 0 ? ++_micros & _microsMax : ++_micros; }
 uint32_t millis() { return ++_micros / 1000; }
-int rtc_get_reset_reason(int) { return esp32sim().resetReason; } 
+int rtc_get_reset_reason(int) { return sim().resetReason; } 
 
 int FakeWiFi::status() {
    bool disable = simulatedFailMinutes > 0 && 
-	   ((micros() + esp32sim().bootTimeUsec) / 1000000 / 60) 
+	   ((micros() + sim().bootTimeUsec) / 1000000 / 60) 
 	   % simulatedFailMinutes == simulatedFailMinutes - 1; 
    if (disable) curStatus = WL_DISCONNECTED; 
    return curStatus; 

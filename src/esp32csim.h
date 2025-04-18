@@ -1,5 +1,5 @@
-#ifndef _ESP32SIM_UBUNTU_H_
-#define _ESP32SIM_UBUNTU_H_
+#ifndef _Csim_UBUNTU_H_
+#define _Csim_UBUNTU_H_
 /* Simple library and simulation environment to compile and run an Arduino sketch as a 
  * standard C command line program. 
  * 
@@ -28,6 +28,10 @@
 #include <functional>
 #include <regex>
 #include <unistd.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <malloc.h>
 
 using std::map;
 using std::ios_base;
@@ -43,36 +47,30 @@ using std::deque;
 using std::to_string;
 
 #define PROGMEM 
-
-
 #define ARDUINO_VARIANT "csim"
+#define ESP_ARDUINO_VERSION_STR "1.1.1"
 #ifndef GIT_VERSION
 #define GIT_VERSION "no-git-version"
 #endif
-struct sensors_event_t {
-	float temperature = -1;
-	float relative_humidity = -1;
-};
+#define byte char
 
-#define DHT22 0
-struct DHT_Unified {
-	struct response { void getEvent(sensors_event_t *) {} } resp;
-	DHT_Unified(int, int) {}  
-	int begin() { return 0; } 
-	struct response temperature() { return resp; }
-	struct response humidity() { return resp; } 
-};
+extern uint64_t _micros; 
+extern uint64_t _microsMax;
+uint32_t micros();
+uint32_t millis();
+void delayMicroseconds(int);
+inline static void delayUs(int x) { delayMicroseconds(x); } 
 
-class ESP32sim_Module {
+class Csim_Module {
 public:
-	ESP32sim_Module();
+	Csim_Module();
 	virtual void parseArg( char **&, char **) {}
 	virtual void setup() {};
 	virtual void loop() {};
 	virtual void done() {};
 };
 
-class ESP32sim_flags : public ESP32sim_Module { 
+class Csim_flags : public Csim_Module { 
 	void addflag(const char *f) {
 		if (strcmp(f, "OneProg") == 0) OneProg = true;
 	}
@@ -83,14 +81,9 @@ public:
 	}
 };
 
-extern ESP32sim_flags csim_flags;
+extern Csim_flags csim_flags;
 
-#define byte char
-
-extern uint64_t _micros; 
-extern uint64_t _microsMax;
-
-class ESP32sim {
+class Csim {
 public:
 	int argc; 
 	char **argv;
@@ -98,7 +91,7 @@ public:
 	double seconds = -1;
 	int resetReason = 0;
 	bool showArgs;
-	vector<ESP32sim_Module *> modules;
+	vector<Csim_Module *> modules;
 	struct TimerInfo { 
 		uint64_t last;
 		uint64_t period;
@@ -111,10 +104,7 @@ public:
 	void exit();
 };
 
-uint32_t micros();
-uint32_t millis();
-
-void ESP32sim_exit(); 
+void Csim_exit(); 
 
 // Stub out FreeRTOS stuff 
 typedef int SemaphoreHandle_t;
@@ -123,7 +113,6 @@ int xSemaphoreCreateMutex() ;
 int xSemaphoreGive(int h) ;
 int xSemaphoreTake(int h, int delay) ;
 int uxSemaphoreGetCount(int h);
-
 
 #define portMAX_DELAY 0 
 #define tskIDLE_PRIORITY 0
@@ -144,12 +133,12 @@ inline static esp_err_t esp_task_wdt_add(void *) { return 0; }
 inline static esp_err_t esp_task_wdt_delete(const void *) { return 0; }
 int rtc_get_reset_reason(int);
 
-#define ADC1_CHANNEL_1 0
-#define ADC1_CHANNEL_2 0
-#define ADC1_CHANNEL_3 0
+#define ADC1_CHANNEL_1 1
+#define ADC1_CHANNEL_2 2
+#define ADC1_CHANNEL_3 3
 inline static int adc1_get_raw(int) { return 0; }
-void delayMicroseconds(int);
-inline static void delayUs(int x) { delayMicroseconds(x); } 
+
+// stub out Adafruit_NeoPixel lib 
 #define NEO_GRB 0
 #define NEO_KHZ800 0
 struct Adafruit_NeoPixel {
@@ -161,11 +150,7 @@ struct Adafruit_NeoPixel {
   void clear() {}
 };
 
-
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
-
+// stub out FS.h
 namespace fs { 
 class File {
 	int fd = -1;
@@ -227,6 +212,7 @@ struct FakeSPIFFS {
 
 extern FakeSPIFFS SPIFFS, LittleFS;
 
+// stub out ArduinoOTA.h
 struct FakeArduinoOTA {
 	void begin() {}
 	void handle() {}
@@ -246,7 +232,7 @@ typedef int ota_error_t;
 #define OTA_RECEIVE_ERROR 0 
 #define OTA_END_ERROR 0 
 
-#include <malloc.h>
+// stub out Esp.h
 struct FakeESP {
 	uint32_t getFreeHeap() { 
 		//struct mallinfo2 mi = mallinfo2();
@@ -254,15 +240,13 @@ struct FakeESP {
 	}
 	uint32_t minFreeHeap = 0xffffffff;
 	uint32_t getMinFreeHeap() { return minFreeHeap = min(minFreeHeap, getFreeHeap()); } 
-	void restart() { ESP32sim_exit(); }
+	void restart() { Csim_exit(); }
 	uint32_t getChipId() { return 0xdeadbeef; }
 };
 
 extern FakeESP ESP;
 
-struct WiFiManager {
-};
-
+// stub out OneWireNg lib
 struct OneWireNg {
 	OneWireNg(int, int) {}
 	typedef int ErrorCode; 
@@ -305,19 +289,20 @@ static inline void uart_tx_wait_idle(int) {}
 static inline void esp_sleep_pd_config(int, int) {}
 #define ESP_PD_DOMAIN_RTC_PERIPH 0
 #define ESP_PD_OPTION_AUTO 0 
-extern int ESP32sim_currentPwm[];
+extern int Csim_currentPwm[];
 
 static inline void ledc_update_duty(int, int) {}
 //#define LEDC_LS_MODE 0
 static inline void ledc_set_duty(int, int chan, int val) {
-	ESP32sim_currentPwm[chan] = val;
+	Csim_currentPwm[chan] = val;
 }
 static inline int ledc_get_duty(int, int) { return 0; }
 static inline void ledc_timer_config(void *) {}
 static inline void ledc_channel_config(void *) {}
 
-// simple pin manager to simply return values that were written
-class ESP32sim_pinManager : public ESP32sim_Module {
+// simple pin manager to blindly return values with digitalRead 
+// that were previously written with digitalWrite
+class Csim_pinManager : public Csim_Module {
 public:
 	struct PressInfo { int pin; float start; float duration; };
 	vector<PressInfo> presses;
@@ -333,7 +318,7 @@ public:
 			time += duration + .2;
 		}
 	}
-	ESP32sim_pinManager() { 
+	Csim_pinManager() { 
 		for(int i = 0; i < sizeof(pins)/sizeof(pins[0]); i++)
 			pins[i] = 1;
 		setPinManager(this); 
@@ -346,8 +331,8 @@ public:
 		pins[p] = v;
 	}
 	virtual void digitalWrite(int p, int v) { pins[p] = v; }
-	static ESP32sim_pinManager *manager;
-	static void setPinManager(ESP32sim_pinManager *p) { manager = p; }  
+	static Csim_pinManager *manager;
+	static void setPinManager(Csim_pinManager *p) { manager = p; }  
 	int digitalRead(int pin) {
 		float now = millis() / 1000.0; // TODO this is kinda slow 
 		for (vector<PressInfo>::iterator it = presses.begin(); it != presses.end(); it++) { 
@@ -391,10 +376,9 @@ public:
 
 extern InterruptManager intMan;
 
-
 static inline void pinMode(int, int) {}
-static inline void digitalWrite(int p, int v) { ESP32sim_pinManager::manager->digitalWrite(p, v); };
-static inline int digitalRead(int p) { return ESP32sim_pinManager::manager->digitalRead(p); }
+static inline void digitalWrite(int p, int v) { Csim_pinManager::manager->digitalWrite(p, v); };
+static inline int digitalRead(int p) { return Csim_pinManager::manager->digitalRead(p); }
 static inline int digitalPinToInterrupt(int) { return 0; }
 static inline void attachInterrupt(int, void (*i)(), int) { intMan.intFunc = i; } 
 static inline void ledcSetup(int, int, int) {}
@@ -408,8 +392,8 @@ static inline void delay(int m) { delayMicroseconds(m*1000); }
 static inline void yield() { intMan.run(); }
 //void analogSetCycles(int) {}
 static inline void adcAttachPin(int) {}
-static inline int analogRead(int p) { return ESP32sim_pinManager::manager->analogRead(p); } 
-static inline void csim_analogSet(int p, int v) { ESP32sim_pinManager::manager->csim_analogSet(p, v); }
+static inline int analogRead(int p) { return Csim_pinManager::manager->analogRead(p); } 
+static inline void csim_analogSet(int p, int v) { Csim_pinManager::manager->csim_analogSet(p, v); }
 
 #define radians(x) ((x)*M_PI/180)
 #define degrees(x) ((x)*180.0/M_PI)
@@ -429,6 +413,7 @@ static inline void csim_analogSet(int p, int v) { ESP32sim_pinManager::manager->
 #define ST7735_WHITE 0 
 #define ST7735_YELLOW 0 
 
+// stub out String.h
 class String {
 	public:
 	string st;
@@ -474,6 +459,7 @@ public:
     int operator [](int) { return 0; }  
 };
 
+// stub out Serial.h
 class FakeSerial { 
 public:
 	deque<pair<uint64_t, String>> inputQueue;
@@ -498,6 +484,10 @@ public:
 };
 typedef FakeSerial Stream;
 extern FakeSerial Serial, Serial1, Serial2;
+
+// stub out WiFi.h
+struct WiFiManager {
+};
 
 #define WL_DISCONNECTED 0
 #define WL_CONNECTED 1
@@ -533,6 +523,7 @@ void csim_onDeepSleep(deepSleepHookT func);
 void esp_deep_sleep_start();
 void esp_light_sleep_start();
 
+// stub out ArduinoJson library
 struct JsonResult { 
 	operator int()  { return 0; }
 	operator const char *() { return ""; }	
@@ -635,7 +626,8 @@ public:
 	}
 };
 
-class PubSubClient : public ESP32sim_Module {
+// stub out PubSubClient library
+class PubSubClient : public Csim_Module {
 	std::function<void(char *, byte *p, unsigned int)> callback = nullptr;
 	struct Event {
 		float sec;
@@ -678,6 +670,8 @@ class PubSubClient : public ESP32sim_Module {
 		return 0; 
 	} 
 };
+
+// stub out SD library
 class FakeSD {
 	public:
 	bool begin(int, int, int, int) { return true; }
@@ -701,7 +695,7 @@ public:
 	void write(const uint8_t *b, int len) {
 		float f;
 		if (txPort == 7892 && sscanf((const char *)b, "trim %f", &f) == 1) {
-			//ESP32sim_pitchCmd = f;
+			//Csim_pitchCmd = f;
 		}
 	}
 	int endPacket() { return 1; }
@@ -735,6 +729,7 @@ public:
 	IPAddress remoteIP() { return IPAddress(); } 
 };
 
+// stub out Pinger library
 struct PingerResponse {
 	int ReceivedResponse = 0;
 };
@@ -746,7 +741,7 @@ struct FakePinger {
 
 typedef FakePinger Pinger;
 
-static inline void ESP32sim_udpInput(int p, const WiFiUDP::InputData &s) { 
+static inline void Csim_udpInput(int p, const WiFiUDP::InputData &s) { 
 	WiFiUDP::InputMap &m = WiFiUDP::inputMap;
 	if (m.find(p) == m.end())
 		m[p] = s;
@@ -754,10 +749,11 @@ static inline void ESP32sim_udpInput(int p, const WiFiUDP::InputData &s) {
 		m[p].insert(m[p].end(), s.begin(), s.end());
 }
 
-static inline void ESP32sim_udpInput(int p, const string &s) {
-	ESP32sim_udpInput(p, WiFiUDP::InputData(s.begin(), s.end()));
+static inline void Csim_udpInput(int p, const string &s) {
+	Csim_udpInput(p, WiFiUDP::InputData(s.begin(), s.end()));
 } 
 
+// stub out NTPClient library
 struct NTPClient {
 	NTPClient(WiFiUDP &a) {}
 	void update() {}
@@ -770,13 +766,13 @@ struct NTPClient {
 	String getFormattedTime() { return String("TIMESTRING"); }
 };
 
+// stub out Wire.h
 class FakeWire {
 public:
 	void begin(int, int) {}
 	void beginTransmission(int) {}
 	bool endTransmission() { return false; }
 };
-
 extern FakeWire Wire;
 
 #define ESP_MAC_WIFI_STA 0
@@ -825,7 +821,7 @@ public:
 //}
 //#endif
 
-class ESPNOW_csimOneProg : public ESP32sim_Module, public ESPNOW_csimInterface {
+class ESPNOW_csimOneProg : public Csim_Module, public ESPNOW_csimInterface {
 	struct SimPacket {
 		uint8_t mac[6];
 		string data;
@@ -1024,13 +1020,26 @@ void loop(void);
 
 int main(int argc, char **argv);
 
+struct sensors_event_t {
+	float temperature = -1;
+	float relative_humidity = -1;
+};
+
+#define DHT22 0
+struct DHT_Unified {
+	struct response { void getEvent(sensors_event_t *) {} } resp;
+	DHT_Unified(int, int) {}  
+	int begin() { return 0; } 
+	struct response temperature() { return resp; }
+	struct response humidity() { return resp; } 
+};
 
 struct DHT {
-	struct Csim { 
+	struct CsimInterface { 
 		map<int,float> temp, humidity;
 		void set(int pin, float t, float h) { temp[pin] = t; humidity[pin] = h; }
 	};
-	static Csim &csim();
+	static CsimInterface &csim();
 	static void csim_set(int pin, float t, float h) { csim().set(pin, t, h); }
 	int pin;
     DHT(int p , int) : pin(p) {} // static init order disaster { csim.set(pin, 22.22, 77.77); } 
@@ -1038,11 +1047,6 @@ struct DHT {
     float readTemperature(bool t = false, bool f = false) { return csim().temp[pin]; }
     float readHumidity(bool f = false) { return csim().humidity[pin]; }
 };
-
-#define DHT22 0
-
-
-#define ESP_ARDUINO_VERSION_STR "1.1.1"
 
 
 #endif // #ifdef _ESP32SIM_UBUNTU_H_

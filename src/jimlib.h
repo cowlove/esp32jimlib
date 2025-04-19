@@ -108,7 +108,6 @@ typedef EggTimer Timer;
 std::vector<std::string> split(const std::string &s, char delim);
 #endif //#ifdef ESP32
 
-
 struct DsTempData {
 	uint64_t id;
 	uint64_t time;

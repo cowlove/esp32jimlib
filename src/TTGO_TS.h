@@ -506,7 +506,7 @@ const JDisplay::Colors JDisplay::defaultColors = { ST7735_GREEN, ST7735_BLACK, S
 const JDisplay::Colors JDisplay::defaultColors = { 1, 2, 3, 4 };
 bool JDisplay::displayToConsole = false;
 
-class ESP32sim_jdisplay : public ESP32sim_Module {
+class Csim_jdisplay : public Csim_Module {
 	IntervalTimer sec = IntervalTimer(1.0);
 	void parseArg(char **&a, char **la) override {
 		if (strcmp(*a, "--jdisplay") == 0) JDisplay::displayToConsole = true;
@@ -516,7 +516,7 @@ class ESP32sim_jdisplay : public ESP32sim_Module {
 		if (sec.tick(millis() / 1000.0) && JDisplay::instanceP != NULL) JDisplay::instanceP->forceUpdate();
 	}
 	void done() override {}
-} esp32sim_jdisplay;
+} Csim_jdisplay;
 #endif // else CSIM
 
 class JDisplayEditableItem;

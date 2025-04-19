@@ -1,5 +1,4 @@
 #include "espNowMux.h"
-
 #ifndef CSIM
 #include "WiFiServer.h"
 #include <esp_now.h>
@@ -89,6 +88,7 @@ void ESPNowMux::registerReadCallback(const char *prefix, std::function<void(cons
     callbacks.push_back(i);
 }
 
+#define SIMFAILURE(x) (sim().simFailureHook(x))
 void ESPNowMux::send(const char *prefix, const uint8_t *buf, int n, int tmo /*= 100*/) {
     check();
     if (SIMFAILURE("espnow-tx") || SIMFAILURE("espnow"))

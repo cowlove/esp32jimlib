@@ -311,7 +311,7 @@ public:
     string makeReport() override {
         float t = NAN, h = NAN;
         for(int r = 0; r < 15; r++) {
-            //while(millis() < 750) delay(10); // HACK - DHT has trouble if read before power is stable for about 650ms
+            while(millis() < 750) delay(10); // HACK - DHT has trouble if read before power is stable for about 650ms
             h = dht.readHumidity();
             t = dht.readTemperature();
             if (!isnan(t) && !isnan(h)) {
@@ -363,11 +363,14 @@ public:
     string makeSchema() override { return sfmt("HX711_%d,%d", clk, data); }
     string makeReport() override {
         float v = 0;
-        int reads = 10;
-        for(int r = 0; r < reads; r++) {
-            v += hx.readChannelRaw();
-        } 
-        v /= reads;
+        delay(1);
+        hx.powerDown(true);
+        delay(1);
+        hx.powerDown(false); 
+        delay(100); 
+    
+        int reads = 1;
+        v = hx.readChannelRaw();
         return sfmt("%.2f", v);
     }
     float get() const { 
@@ -380,7 +383,7 @@ public:
 
 inline SchemaParser::RegisterClass SensorHX711::reg([](const string &s)->Sensor * { 
     int clk, data;
-    if (sscanf(s.c_str(), "HX711_%d,%d", &clk, &data) == 1) 
+    if (sscanf(s.c_str(), "HX711_%d,%d", &clk, &data) == 2) 
         return new SensorHX711(NULL, "", clk, data);
     return NULL; 
 });

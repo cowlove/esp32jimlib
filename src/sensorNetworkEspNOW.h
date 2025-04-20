@@ -5,6 +5,7 @@
 #include "reliableStream.h"
 #include "Arduino_CRC32.h" 
 #include "serialLog.h"
+#include "Adafruit_HX711.h"
 
 #ifndef CSIM
 #include "DHT.h"
@@ -346,6 +347,41 @@ inline SchemaParser::RegisterClass SensorDHT::reg([](const string &s)->Sensor * 
     int pin;
     if (sscanf(s.c_str(), "DHT%d", &pin) == 1) 
         return new SensorDHT(NULL, "", pin);
+    return NULL; 
+});
+
+class SensorHX711 : public Sensor { 
+    int clk, data;
+    int retries = 0;
+public:
+    Adafruit_HX711 hx;
+    SensorHX711(RemoteSensorModule *p, const char *n, int _clk, int _data) : 
+        Sensor(p, n), clk(_clk), data(_data), hx(_data, _clk) {}    
+    void begin() override { 
+        hx.begin(); 
+    }
+    string makeSchema() override { return sfmt("HX711_%d,%d", clk, data); }
+    string makeReport() override {
+        float v = 0;
+        int reads = 10;
+        for(int r = 0; r < reads; r++) {
+            v += hx.readChannelRaw();
+        } 
+        v /= reads;
+        return sfmt("%.2f", v);
+    }
+    float get() const { 
+        float t = NAN;
+        sscanf(result.c_str(), "%f", &t);
+        return t;
+    }
+    static SchemaParser::RegisterClass reg;
+};
+
+inline SchemaParser::RegisterClass SensorHX711::reg([](const string &s)->Sensor * { 
+    int clk, data;
+    if (sscanf(s.c_str(), "HX711_%d,%d", &clk, &data) == 1) 
+        return new SensorHX711(NULL, "", clk, data);
     return NULL; 
 });
 

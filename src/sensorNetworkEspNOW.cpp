@@ -322,3 +322,55 @@ vector<SchemaParser::ParserFunc> &SchemaParser::parserList() {
     return *onFirstUse;
 }
     
+typedef struct {
+    unsigned protocol:2;
+    unsigned type:2;
+    unsigned subtype:4;
+    unsigned ignore1:8;
+    unsigned long recv_addr:48; 
+    unsigned long send_addr:48; 
+    unsigned ignore2:32;
+    uint64_t timestamp;
+} raw_beacon_packet_t;    
+
+struct BeaconPktInfo { 
+    uint64_t ssid = 0;
+    int rssi;
+    uint64_t ts;
+    int count = 0;
+    uint64_t seen;
+    uint64_t seen2;
+};
+
+
+#if 0
+int ptLogIndex = 0;
+static BeaconPktInfo pktLog[128];
+
+void intr_collect(void *buf, wifi_promiscuous_pkt_type_t type) {
+    uint64_t seen2 = micros();
+    const wifi_promiscuous_pkt_t *pt = (wifi_promiscuous_pkt_t*)buf; 
+    const raw_beacon_packet_t *pk = (raw_beacon_packet_t*)pt->payload;
+    if (pk->subtype == 0x8) {
+        int i = pktLogIndex;
+        pktLog[i].ssid = pk->send_addr);
+        pktLog[i].seen2 = seen2;
+        pktLog[i].seen = pt->rx_ctrl.timestamp;
+        pktLog[i].rssi = (pt->rx_ctrl.rssi + pktLog[i].count * pktLog[i].rssi) / (pktLog[i].count + 1);
+        pktLog[i].count++;
+        pktLog[i].ts = pk->timestamp;
+        pktLogIndex = (pktLogIndex + 1) % (sizeof(pktLog)/sizeof(pktLog[0]));   
+    }
+}
+
+void BeaconSynchRxCallback();
+
+//#include "esp_wifi.h"
+
+void BeaconSynchronizedWakeup::begin(int beaconCount /*defaulted*/, int beaconPeriodMin /*defaulted*/) {
+//    esp_wifi_set_promiscuous(1);
+//    wifi_promiscuous_filter_t filter = {WIFI_PROMIS_FILTER_MASK_MGMT};
+//    esp_wifi_set_promiscuous_filter(&filter); 
+//    esp_wifi_set_promiscuous_rx_cb(BeaconSynchRxCallback);
+}
+#endif

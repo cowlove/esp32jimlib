@@ -17,6 +17,7 @@ public:
     void begin(int beaconCount = 3, int beaconPeriodMin = 30);
     float getSleepSec();
     int getRxCount();
+    string getStats();
 };
 
 

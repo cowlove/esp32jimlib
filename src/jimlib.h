@@ -6,6 +6,8 @@
 #include <stdarg.h>
 #include <cstdint>
 #include <regex>
+#include <cinttypes>
+
 #ifndef CSIM
 #include "ArduinoOTA.h"
 #include "WiFiUdp.h"
@@ -145,25 +147,20 @@ static inline string &getMacAddress(string &result) {
 const String &getMacAddress();
 int getResetReason(int cpu = 0);
 
-#ifdef CSIM
-#define LLFMT "l"
-#else
-#define LLFMT "ll"
-#endif
 
 template<class T> bool fromString(const string &s, T&v);
 template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d", &v) == 1; }
-template<> inline bool fromString(const string &s, uint64_t &v) { return sscanf(s.c_str(), "%" LLFMT "x", &v) == 1; }
+template<> inline bool fromString(const string &s, uint64_t &v) { return sscanf(s.c_str(), "%" PRIx64 "x", &v) == 1; }
 template<> inline bool fromString(const string &s, uint32_t &v) { return sscanf(s.c_str(), "%x", &v) == 1; }
-template<> inline bool fromString(const string &s, int64_t &v) { return sscanf(s.c_str(), "%" LLFMT "d", &v) == 1; }
+template<> inline bool fromString(const string &s, int64_t &v) { return sscanf(s.c_str(), "%" PRId64, &v) == 1; }
 template<> inline bool fromString(const string &s, float &v) { return sscanf(s.c_str(), "%f", &v) == 1; }
 template<> inline bool fromString(const string &s, string &v) { v = s; return true; }
 template<> inline bool fromString(const string &s, bool &v) { v = (s == "true"); return true; }
 
 template<class T> string toString(const T&v);
-template<> inline string toString(const uint64_t &v) { return sfmt("%" LLFMT "x", v); }
+template<> inline string toString(const uint64_t &v) { return sfmt("%" PRIx64, v); }
 template<> inline string toString(const uint32_t &v) { return sfmt("%x", v); }
-template<> inline string toString(const int64_t &v) { return sfmt("%" LLFMT "d", v); }
+template<> inline string toString(const int64_t &v) { return sfmt("%" PRId64, v); }
 template<> inline string toString(const int &v) { return sfmt("%d", v); }
 template<> inline string toString(const float &v) { return sfmt("%f", v); }
 template<> inline string toString(const string &v) { return v; }

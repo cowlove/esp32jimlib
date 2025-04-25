@@ -14,6 +14,7 @@ public:
     void clearOptions(uint32_t x) { options &= ~x; } 
     void vout(const char *file, int line, const char *format, va_list args); 
     void out(const char *file, int line, const char *format, ...);
+    void out(const char *file, int line, const string &);
 }; 
 
 extern SerialLogManager serialLog;

@@ -2,6 +2,17 @@
 SerialLogManager serialLog(0xff);
 
 void SerialLogManager::vout(const char *file, int line, const char *format, va_list args) { 
+    return out(file, line, vsfmt(format, args));
+}
+
+void SerialLogManager::out(const char *file, int line, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vout(file, line, format, args);
+    va_end(args);
+};
+
+void SerialLogManager::out(const char *file, int line, const string &l) { 
     string s;
     if (options & showSleep) s += sfmt("%06.1f ", dsTime.millis()/1000.0);
     if (options & showMillis) s += sfmt("%06.3f ", millis()/1000.0);
@@ -16,15 +27,12 @@ void SerialLogManager::vout(const char *file, int line, const char *format, va_l
         s += ln;
     }
     if (options & showBar) s += "| ";
-    s += vsfmt(format, args);
-    if (strchr(format, '\n') == NULL) 
+    s += l;
+    if (s.find('\n') == string::npos)
         s += '\n'; 
+
     printf("%s", s.c_str());
     fflush(stdout);
+
 }
-void SerialLogManager::out(const char *file, int line, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    vout(file, line, format, args);
-    va_end(args);
-};
+

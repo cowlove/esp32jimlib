@@ -171,6 +171,7 @@ struct BeaconPktInfo {
 
 
 struct BeaconSynchronizedWakeup::PrivData { 
+    string stats;
     SPIFFSVariable<std::map<uint64_t,int>> ssidCountMap = SPIFFSVariable<std::map<uint64_t,int>>("/ssidCountMap", std::map<uint64_t,int>());
     int rxCount = 0;
     BeaconPktInfo pktLog[32] = {0};    
@@ -202,7 +203,7 @@ struct BeaconSynchronizedWakeup::PrivData {
         if (getResetReason() != 5) countMap.clear();
         // tmp don't use countMap
         countMap.clear();
-        OUT("getResults() rxCount %d", rxCount);
+
         vector<BeaconPktInfo> r;
         for(int i = 0; i < sizeof(pktLog)/sizeof(pktLog[0]); i++) {
             if (pktLog[i].count == 0)
@@ -229,15 +230,16 @@ struct BeaconSynchronizedWakeup::PrivData {
         }
         ssidCountMap = countMap;
         for(auto b : r) { 
-            printf("RAW     %" LLFMT "x %2d %" LLFMT "x\n", b.ssid, b.count, b.ts);
+            printf("RAW     %" PRIx64 " %2d %" PRIx64 "\n", b.ssid, b.count, b.ts);
         }
         return r;
     }
+
     float getBest(int best, uint64_t clock) {
         vector<BeaconPktInfo> r = getResults(); 
         sort(r.begin(), r.end(), [](const BeaconPktInfo &a, const BeaconPktInfo &b) { return a.count > b.count; });
         for(auto b : r) { 
-            printf("SORTED  %" LLFMT "x %2d %" LLFMT "x\n", b.ssid, b.count, b.ts);
+            printf("SORTED  %" PRIx64 " %2d %" PRIx64 "\n", b.ssid, b.count, b.ts);
         }
 
         // only keep the top ssids that account for 80% of counts
@@ -246,29 +248,43 @@ struct BeaconSynchronizedWakeup::PrivData {
         OUT("completeSum %d", completeSum);
         for(auto i = r.begin(); i != r.end(); i++) { 
             sum += i->count;
-            if (sum > completeSum * 0.999) { 
+            if (sum > completeSum * 1.00) { 
                 r.erase(i + 1, r.end());
                 break;
             }
         }
+
+        // trim off everything that is less that 20% of the best beacon
+        int maxCount = 0;
+        for(auto b : r) maxCount = max(maxCount, b.count);
+        for(auto i = r.begin(); i != r.end(); i++) { 
+            if (i->count < maxCount * 0.0) {
+                r.erase(i, r.end());
+                break;
+            }
+        }
+
         // trim to top #best number of results
-        if (r.size() > best) 
+        if (best > 0 && r.size() > best) 
             r.erase(r.begin() + best, r.end());
         for(auto b : r) { 
-            printf("TRIMMED %" LLFMT "x %2d %" LLFMT "x\n", b.ssid, b.count, b.ts);
+            printf("TRIMMED %" PRIx64 " %2d %" PRIx64 "\n", b.ssid, b.count, b.ts);
         }
         sort(r.begin(), r.end(), [clock](const BeaconPktInfo &a, const BeaconPktInfo &b) { 
             return a.ts % clock > b.ts % clock; });
         for(auto b : r) { 
-            printf("SOONEST %" LLFMT "x %2d %" LLFMT "x  %.02f\n", b.ssid, b.count, b.ts, (clock - (b.ts % clock)) / 1000000.0 );
+            printf("SOONEST %" PRIx64 " %2d %" PRIx64 "  %.02f\n", b.ssid, b.count, b.ts, (clock - (b.ts % clock)) / 1000000.0 );
         }
     
         if (r.size() > 0) { 
             float rval = (clock - (r[0].ts % clock)) / 1000000.0;
-            printf("\nBEST*** %" LLFMT "x %2d %" LLFMT "x  %.02f\n\n\n", r[0].ssid, r[0].count, r[0].ts, rval);            
-            return rval;
+            printf("\nBEST*** %" PRIx64 " %2d %" PRIx64 "  %.02f\n\n\n", r[0].ssid, r[0].count, r[0].ts, rval);
+            stats = sfmt("mac %" PRIx64 " count %d rssi %d", r[0].ssid, r[0].count, r[0].rssi);            
+            return rval - (micros() - r[0].seen2) / 1000000.0;
+        } else {
+            stats = "mac none count 0"; 
+            return -1;
         }
-        return -1;
     }
 };
 
@@ -300,5 +316,9 @@ int BeaconSynchronizedWakeup::getRxCount() {
     return priv->rxCount;
 }
 float BeaconSynchronizedWakeup::getSleepSec() {
-    return priv->getBest(4, 1000000 * 60 * 30); 
+    return priv->getBest(-1, 1000000 * 60 * 30); 
+}
+
+string BeaconSynchronizedWakeup::getStats() { 
+    return priv->stats;
 }

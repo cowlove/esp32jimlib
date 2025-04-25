@@ -33,6 +33,5 @@ void SerialLogManager::out(const char *file, int line, const string &l) {
 
     printf("%s", s.c_str());
     fflush(stdout);
-
 }
 

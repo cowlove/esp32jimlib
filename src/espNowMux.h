@@ -18,6 +18,7 @@ public:
     float getSleepSec();
     int getRxCount();
     string getStats();
+    void printPkts();
 };
 
 

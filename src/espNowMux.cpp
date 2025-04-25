@@ -153,13 +153,16 @@ typedef struct {
     unsigned protocol:2;
     unsigned type:2;
     unsigned subtype:4;
-    unsigned ignore1:8;
+    unsigned ignore1:24;
     unsigned long long recv_addr:48; 
     unsigned long long send_addr:48; 
-    unsigned ignore2:32;
+    unsigned ignore2:16;
     uint64_t timestamp;
 } raw_beacon_packet_t;    
 
+// recv addr is garbled - getting 300fb494ffff for MAC 94:B4:0F:30:34:B1  
+// maybe the missing bits differentiate access points
+// right now 
 struct BeaconPktInfo { 
     uint64_t ssid = 0;
     int rssi;
@@ -174,7 +177,8 @@ struct BeaconSynchronizedWakeup::PrivData {
     string stats;
     SPIFFSVariable<std::map<uint64_t,int>> ssidCountMap = SPIFFSVariable<std::map<uint64_t,int>>("/ssidCountMap", std::map<uint64_t,int>());
     int rxCount = 0;
-    BeaconPktInfo pktLog[32] = {0};    
+    BeaconPktInfo pktLog[32] = {0}; 
+    raw_beacon_packet_t rawLog[32] = {0};   
     void rxInterrupt(void *buf, wifi_promiscuous_pkt_type_t type) { 
         uint64_t seen2 = micros();
         rxCount++;   
@@ -197,6 +201,20 @@ struct BeaconSynchronizedWakeup::PrivData {
             pktLog[i].count++;
             pktLog[i].ts = pk->timestamp;
         }    
+    }
+    int pktIndex = 0;
+    void rxInterruptLogPackets(void *buf, wifi_promiscuous_pkt_type_t type) { 
+        uint64_t seen2 = micros();
+        const wifi_promiscuous_pkt_t *pt = (wifi_promiscuous_pkt_t*)buf; 
+        const raw_beacon_packet_t *pk = (raw_beacon_packet_t*)pt->payload;
+        if (pk->subtype != 0x8) 
+            return;
+
+        rxCount++;   
+        int i = pktIndex++;
+        if (i >= sizeof(rawLog)/sizeof(rawLog[0]))
+            return;
+        rawLog[i] = *pk;
     }
     vector<BeaconPktInfo> getResults() { 
         std::map<uint64_t,int> countMap = ssidCountMap.read();
@@ -304,12 +322,13 @@ void BeaconSynchronizedWakeup::begin(int beaconCount /*defaulted*/, int beaconPe
 #endif
     esp_wifi_set_promiscuous(1);
     wifi_promiscuous_filter_t filter = {WIFI_PROMIS_FILTER_MASK_MGMT};
-    esp_wifi_set_promiscuous_filter(&filter); 
+    esp_wifi_set_promiscuous_filter(&filter);
     esp_wifi_set_promiscuous_rx_cb(CallbackWrapper<void, void *, wifi_promiscuous_pkt_type_t>::wrap(
         [this](void *buf, wifi_promiscuous_pkt_type_t type) { 
             priv->rxInterrupt(buf, type);
-        }
-    ));
+            if(false) // enable to use printPkts() below 
+                priv->rxInterruptLogPackets(buf, type);
+    }));
 }
 
 int BeaconSynchronizedWakeup::getRxCount() { 
@@ -321,4 +340,20 @@ float BeaconSynchronizedWakeup::getSleepSec() {
 
 string BeaconSynchronizedWakeup::getStats() { 
     return priv->stats;
+}
+
+void BeaconSynchronizedWakeup::printPkts() { 
+    for(int i = 0; i < sizeof(priv->rawLog)/sizeof(priv->rawLog[0]); i++) {
+        raw_beacon_packet_t &b = priv->rawLog[i];
+        if (b.send_addr == 0)
+            continue; 
+        OUT("%08" PRIx64 " %08" PRIx64, b.send_addr, b.timestamp);
+        uint8_t *p = (uint8_t *)&b;
+        for(int b = 0; b < sizeof(raw_beacon_packet_t); b++) { 
+            printf("%02x", p[b]);
+            if (b % 8 == 7) printf(" ");
+            if (b % 32 == 31) printf("\n");
+        }
+        printf("\n");
+    }
 }

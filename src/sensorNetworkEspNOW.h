@@ -554,11 +554,6 @@ public:
     void prepareSleep(uint32_t ms);
 };
 
-class BeaconSynchronizedWakeup { 
-public:
-    void begin(int beaconCount = 3, int beaconPeriodMin = 30);
-    float getSleepSec();
-};
 
 //static SchemaList::Register();
 #endif //__SENSORNETWORKESPNOW_H_

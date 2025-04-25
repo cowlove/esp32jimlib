@@ -145,26 +145,30 @@ static inline string &getMacAddress(string &result) {
 const String &getMacAddress();
 int getResetReason(int cpu = 0);
 
+#ifdef CSIM
+#define LLFMT "l"
+#else
+#define LLFMT "ll"
+#endif
 
 template<class T> bool fromString(const string &s, T&v);
-template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d ", &v) == 1; }
-template<> inline bool fromString(const string &s, uint64_t &v) { return sscanf(s.c_str(), "%lu ", &v) == 1; }
-template<> inline bool fromString(const string &s, uint32_t &v) { return sscanf(s.c_str(), "%u ", &v) == 1; }
-template<> inline bool fromString(const string &s, int64_t &v) { return sscanf(s.c_str(), "%ld ", &v) == 1; }
-template<> inline bool fromString(const string &s, float &v) { return sscanf(s.c_str(), "%f ", &v) == 1; }
+template<> inline bool fromString(const string &s, int &v) { return sscanf(s.c_str(), "%d", &v) == 1; }
+template<> inline bool fromString(const string &s, uint64_t &v) { return sscanf(s.c_str(), "%" LLFMT "x", &v) == 1; }
+template<> inline bool fromString(const string &s, uint32_t &v) { return sscanf(s.c_str(), "%x", &v) == 1; }
+template<> inline bool fromString(const string &s, int64_t &v) { return sscanf(s.c_str(), "%" LLFMT "d", &v) == 1; }
+template<> inline bool fromString(const string &s, float &v) { return sscanf(s.c_str(), "%f", &v) == 1; }
 template<> inline bool fromString(const string &s, string &v) { v = s; return true; }
 template<> inline bool fromString(const string &s, bool &v) { v = (s == "true"); return true; }
 
 template<class T> string toString(const T&v);
-template<> inline string toString(const uint64_t &v) { return sfmt("%lu ", v); }
-template<> inline string toString(const uint32_t &v) { return sfmt("%u ", v); }
-template<> inline string toString(const int64_t &v) { return sfmt("%ld ", v); }
-template<> inline string toString(const int &v) { return sfmt("%d ", v); }
-template<> inline string toString(const float &v) { return sfmt("%f ", v); }
+template<> inline string toString(const uint64_t &v) { return sfmt("%" LLFMT "x", v); }
+template<> inline string toString(const uint32_t &v) { return sfmt("%x", v); }
+template<> inline string toString(const int64_t &v) { return sfmt("%" LLFMT "d", v); }
+template<> inline string toString(const int &v) { return sfmt("%d", v); }
+template<> inline string toString(const float &v) { return sfmt("%f", v); }
 template<> inline string toString(const string &v) { return v; }
 template<> inline string toString(const bool &v) { return v ? "true" : "false"; }
 
-#define LP() printf("%09.3f %s:%d\n", millis() / 1000.0, basename(__FILE__), __LINE__)
 template<> inline bool fromString(const string &s, std::vector<string> &v) {
 	v = split(s, '\n');
 	return true;
@@ -177,6 +181,32 @@ template<> inline string toString(const std::vector<string> &v) {
 	rval.reserve(totalSize);
     for(auto line : v) rval += line + "\n";
     return rval;
+}
+
+template<typename A, typename B> 
+bool fromString(const string &s, std::map<A,B> &v) {
+    v = std::map<A,B>();
+    auto lines = split(s, '\n');
+    for(auto l : lines) { 
+        auto words = split(l, '=');
+        if (words.size() == 2) { 
+            A a; 
+            B b;
+            fromString(words[0], a);
+            fromString(words[1], b);
+            v[a] = b;
+        }
+    }
+	return true;
+}
+
+template<typename A, typename B> 
+string toString(const std::map<A,B> &v) {
+	string result;
+	for (auto i: v) {
+		result += toString(i.first) + "=" + toString(i.second) + "\n";
+	}
+    return result;
 }
 
 //extern int SpiffsInit;

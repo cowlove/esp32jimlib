@@ -10,6 +10,14 @@
 
 #include "jimlib.h"
 
+class BeaconSynchronizedWakeup { 
+    struct PrivData;
+    PrivData *priv;
+public:
+    void begin(int beaconCount = 3, int beaconPeriodMin = 30);
+    float getSleepSec();
+};
+
 
 class ESPNowMux { 
     uint32_t lastSend = 0;
@@ -38,6 +46,8 @@ private:
     vector<cbInfo> callbacks;
     bool initialized = false;
 };
+
+
 
 extern ESPNowMux espNowMux;
 #endif // ESPNOWMUX_H

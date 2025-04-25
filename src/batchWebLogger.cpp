@@ -96,14 +96,14 @@ void FileLineLogger::trimLinesFromFront_ZeroPad(int count) {
         bytesToRemove += l.length() + 1;
         lineCount--;
     }
-    LP();
+    OUT("");
     if (bytesToRemove == origSize) { 
         lineCount = 0;
         f.close();
         LittleFS.remove(filename.c_str());
         return;
     }
-    LP();
+    OUT("");
     int pos = 0;
     int fileSz = f.size();
 
@@ -121,7 +121,7 @@ void FileLineLogger::trimLinesFromFront_ZeroPad(int count) {
         pos += n;
     }
     f2.close();
-    LP();
+    OUT("");
 
     // can't truncate, just pad the end with zeros
     // f.truncate(origSize - bytesToRemove);
@@ -136,7 +136,7 @@ void FileLineLogger::trimLinesFromFront_ZeroPad(int count) {
             pos++;
         }
     }
-LP();
+    OUT("");
 }
 
 void FileLineLogger::trimLinesFromFront(int count) { trimLinesFromFrontCopy(count); }

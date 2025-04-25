@@ -16,12 +16,14 @@ class BeaconSynchronizedWakeup {
 public:
     void begin(int beaconCount = 3, int beaconPeriodMin = 30);
     float getSleepSec();
+    int getRxCount();
 };
 
 
 class ESPNowMux { 
     uint32_t lastSend = 0;
 public:
+    BeaconSynchronizedWakeup bwakeup;
     int defaultChannel = 1;
     bool pending = false;
     uint32_t lastReceiveUs = 0;

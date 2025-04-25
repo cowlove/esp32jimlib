@@ -42,10 +42,6 @@ void ESPNowMux::check() {
             esp_wifi_init(&my_config);
             esp_wifi_start(); 
         }
-        if (firstInit) {
-            //Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
-        }
-        firstInit = false;
         WiFi.mode(WIFI_STA);
         esp_wifi_start();
         esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
@@ -63,6 +59,12 @@ void ESPNowMux::check() {
         esp_now_add_peer(&broadcastPeerInfo);
         initialized = true;
         pending = false;
+        if (firstInit) {
+            //Serial.printf("ESPNowClient: using WiFi channel %d\n", chan);
+            bwakeup.begin();
+            firstInit = false;
+        }
+        esp_wifi_set_promiscuous(1);
     }
 }
 void ESPNowMux::onRecv(const uint8_t *mac, const uint8_t *data, int len) {
@@ -132,6 +134,7 @@ void ESPNowMux::send(const char *prefix, const uint8_t *buf, int n, int tmo /*= 
 } 
 
 void ESPNowMux::stop() { 
+    esp_wifi_set_promiscuous(0);
     initialized = false;
     for(auto i = callbacks.begin(); i != callbacks.end(); i++) { 
         i->dataReceived = false;
@@ -169,23 +172,29 @@ struct BeaconPktInfo {
 
 struct BeaconSynchronizedWakeup::PrivData { 
     SPIFFSVariable<std::map<uint64_t,int>> ssidCountMap = SPIFFSVariable<std::map<uint64_t,int>>("/ssidCountMap", std::map<uint64_t,int>());
-    int pktLogIndex = 0;
     int rxCount = 0;
-    BeaconPktInfo pktLog[512] = {0};    
+    BeaconPktInfo pktLog[32] = {0};    
     void rxInterrupt(void *buf, wifi_promiscuous_pkt_type_t type) { 
         uint64_t seen2 = micros();
         rxCount++;   
         const wifi_promiscuous_pkt_t *pt = (wifi_promiscuous_pkt_t*)buf; 
         const raw_beacon_packet_t *pk = (raw_beacon_packet_t*)pt->payload;
         if (pk->subtype == 0x8) {
-            int i = pktLogIndex;
+            int i = 0, minI = 0;
+            for(i = 0; i < (sizeof(pktLog)/sizeof(pktLog[0])); i++) {
+                if (pktLog[i].ssid == pk->send_addr || pktLog[i].ssid == 0)
+                    break;
+                if (pktLog[i].count < pktLog[minI].count)
+                    minI = i;
+            }
+            if (i == sizeof(pktLog)/sizeof(pktLog[0])) 
+                i = minI;
             pktLog[i].ssid = pk->send_addr;
             pktLog[i].seen2 = seen2;
             pktLog[i].seen = pt->rx_ctrl.timestamp;
-            pktLog[i].rssi = (pt->rx_ctrl.rssi + pktLog[i].count * pktLog[i].rssi) / (pktLog[i].count + 1);
-            pktLog[i].count = 1;
+            pktLog[i].rssi = pt->rx_ctrl.rssi;
+            pktLog[i].count++;
             pktLog[i].ts = pk->timestamp;
-            pktLogIndex = (pktLogIndex + 1) % (sizeof(pktLog)/sizeof(pktLog[0]));
         }    
     }
     vector<BeaconPktInfo> getResults() { 
@@ -198,19 +207,9 @@ struct BeaconSynchronizedWakeup::PrivData {
         for(int i = 0; i < sizeof(pktLog)/sizeof(pktLog[0]); i++) {
             if (pktLog[i].count == 0)
                 continue; 
-            auto b = r.begin();
-            for(; b != r.end(); b++) { 
-                if (b->ssid == pktLog[i].ssid) break;
-            }
-            if (b == r.end()) { 
-                r.push_back(pktLog[i]);
-                b = r.end() - 1;
-                if (countMap.find(b->ssid) != countMap.end()) {
-                    b->count = countMap[b->ssid] + 1; 
-                }
-            } else { 
-                b->count++;
-            }
+            if (countMap.find(pktLog[i].ssid) != countMap.end()) 
+                pktLog[i].count += countMap[pktLog[i].ssid]; 
+            r.push_back(pktLog[i]);
         }
         
         //countMap.clear();
@@ -276,6 +275,7 @@ struct BeaconSynchronizedWakeup::PrivData {
 void BeaconSynchronizedWakeup::begin(int beaconCount /*defaulted*/, int beaconPeriodMin /*defaulted*/) {
     priv = new PrivData();
     bzero(priv->pktLog, sizeof(priv->pktLog));
+#if 0 
     esp_wifi_stop();
     esp_wifi_deinit();
     wifi_init_config_t my_config = WIFI_INIT_CONFIG_DEFAULT();
@@ -285,6 +285,7 @@ void BeaconSynchronizedWakeup::begin(int beaconCount /*defaulted*/, int beaconPe
     esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_disconnect();
+#endif
     esp_wifi_set_promiscuous(1);
     wifi_promiscuous_filter_t filter = {WIFI_PROMIS_FILTER_MASK_MGMT};
     esp_wifi_set_promiscuous_filter(&filter); 
@@ -295,7 +296,9 @@ void BeaconSynchronizedWakeup::begin(int beaconCount /*defaulted*/, int beaconPe
     ));
 }
 
+int BeaconSynchronizedWakeup::getRxCount() { 
+    return priv->rxCount;
+}
 float BeaconSynchronizedWakeup::getSleepSec() {
     return priv->getBest(4, 1000000 * 60 * 30); 
-    //return priv->rxCount;   
 }

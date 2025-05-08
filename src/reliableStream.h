@@ -122,6 +122,7 @@ protected:
       lastRecon = lastSend = lastRecv = millis();
     }
     client.setTimeout(6000);
+#ifndef CSIM
     if (millis() - lastSend > 3000) { 
       lastSend = millis();
       string s = ACK_pkt + separator;
@@ -133,6 +134,7 @@ protected:
       if (client.connected()) 
         client.stop();
     }
+#endif
   } 
   bool initialized = false;
   T client;

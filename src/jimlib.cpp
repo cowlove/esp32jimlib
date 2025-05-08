@@ -99,6 +99,32 @@ std::string sfmt(const char *format, ...) {
 	return rval;
 }
 
+std::string &ltrim(std::string &s) {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char c) { return !std::isspace(c); }));    return s;
+}
+
+std::string &rtrim(std::string &s) {
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](char c) { return !std::isspace(c); }).base(), s.end());
+    return s;
+}
+
+std::string &trim(std::string &s) {
+    return ltrim(rtrim(s));
+}
+
+vector<string> split(const char *line, const char *delim) {
+	char *buf = strdup(line); 
+	std::vector<string> rval;
+	for(char *w = strtok(buf, delim); w != NULL; w = strtok(NULL, delim)) {
+	  string ws(w);
+	  trim(ws);
+	  rval.push_back(ws);
+	}
+	free(buf);
+	return rval;
+}
+
+
 int scanI2c() { 
 	int count = 0;
 	for (uint8_t i = 8; i < 120; i++)

@@ -52,6 +52,11 @@ std::string sfmt(const char *format, ...);
 //template<typename... Args> std::string strfmt(const char *format, Args... args) { return sfmt(format, args...); }
 #define strfmt sfmt
 
+std::string &ltrim(std::string &s);
+std::string &rtrim(std::string &s);
+std::string &trim(std::string &s);
+vector<string> split(const char *line, const char *delim);
+  
 int scanI2c();
 void printPins();
 

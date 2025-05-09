@@ -59,4 +59,27 @@ private:
 
 
 extern ESPNowMux defaultEspNowMux;
+
+#ifdef CSIM
+// Module encapsulating a private csim context and a private 
+// instance of an espNowMux to simulate esp now traffic between
+// separate ESP32s.  
+class Csim_privateContext : public ESPNOW_csimOneProg { 
+	ESPNOW_csimOneProg privEspNow;
+	CsimContext privContext;
+protected:
+	ESPNowMux privMux;
+public:
+	Csim_privateContext(uint64_t mac = 0xddeeffddeef0) { 
+		privContext.mac = mac;
+		privContext.espnow = &privEspNow;
+		this->context = &privContext;
+        // set private context for derivived class constructors and member constructors. 
+        // The end of the derived-class constructors MUST restore currentContext = &defaultContext,
+        // checked by asserts() throughout esp32csim.cpp
+        currentContext = this->context;    
+	}
+};
+#endif
+
 #endif // ESPNOWMUX_H

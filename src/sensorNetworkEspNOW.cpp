@@ -71,6 +71,7 @@ void RemoteSensorServer::onReceive(const string &s) {
     incomingHash = in[specialWords.SCHASH];
     if (in.find(specialWords.SERVER) != in.end()) return;
 
+    OUT("server <<<< %s\n", s.c_str());
     bool packetHandled = false;
     for(auto p : modules) { 
         if (p->mac == incomingMac) {
@@ -136,7 +137,7 @@ void RemoteSensorServer::onReceive(const string &s) {
         }
     }
     float late = lastLastSynchTs.elapsed() / 1000.0 - synchPeriodMin * 60;
-    OUT("server <<<< %s (%.2fs late)\n", s.c_str(), late);
+    OUT("server (traffic was %.2fs late)\n", late);
 }
 
 void RemoteSensorServer::write(const string &s) { 
@@ -185,12 +186,6 @@ float RemoteSensorServer::getSleepRequest() { // rename to getSleepRequestSec()
     if (sleepSec < 0) sleepSec = -1;
     return sleepSec;  
 }
-
-void RemoteSensorClient::csimOverrideMac(const string &s) { 
-    mac = s;
-    init();
-    allowDeepSleep = false;
-} 
 Sensor *RemoteSensorClient::findByName(const char *n) { 
     return array == NULL ? NULL : array->findByName(n);
 }

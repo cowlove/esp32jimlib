@@ -533,18 +533,17 @@ public:
 
 class RemoteSensorClient : public RemoteSensorProtocol { 
     string mac;
-    ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true);
     RemoteSensorModule *array = NULL;
     SPIFFSVariable<int> *lastChannel = NULL, *sleepRemainingMs;
     SPIFFSVariable<string> *lastSchema = NULL;
     uint32_t inhibitStartMs, lastReceive = 0, inhibitMs = 0;
-    bool allowDeepSleep = true;
     void checkInit();
     HzTimer timer = HzTimer(.6, true);
 public:
+    ReliableStreamESPNow fakeEspNow = ReliableStreamESPNow("SN", true); // rename this
+    bool allowDeepSleep = true;
     RemoteSensorClient();
     bool channelHop = false;
-    void csimOverrideMac(const string &s);
     Sensor *findByName(const char *n);
     void init(const string &schema = "");
     void updateFirmware();
@@ -553,6 +552,26 @@ public:
     void run();
     void prepareSleep(uint32_t ms);
 };
+
+#ifdef CSIM
+class Csim_RemoteSensorClientContext : public Csim_privateContext {
+public:
+    RemoteSensorClient client;
+    Csim_RemoteSensorClientContext(uint64_t mac) : Csim_privateContext(mac) { 
+        SPIFFSVariableESP32Base::begin(); // hush up artificial warnings about early access
+        client.fakeEspNow.client.enMux = &this->privMux;
+        //client.init(); // this breaks DEEP SLEEP?!?!?! TODO investigate 
+        client.allowDeepSleep = false;
+        currentContext = &defaultContext;
+        csim_onDeepSleep([this](uint64_t usec) {
+            client.prepareSleep(usec / 1000);
+        });
+    }
+    void loop() override { 
+        client.run();
+    }
+};
+#endif
 
 
 //static SchemaList::Register();

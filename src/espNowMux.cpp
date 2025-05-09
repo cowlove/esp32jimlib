@@ -47,11 +47,7 @@ void ESPNowMux::check() {
         esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
         esp_now_deinit();
         esp_now_init();
-    #if ESP_ARDUINO_VERSION_MAJOR == 3 
         esp_now_register_recv_cb(recvCbWrapper);
-    #else
-        esp_now_register_recv_cb(recvCbWrapper);
-    #endif
         esp_now_register_send_cb(sendCbWrapper);
         memcpy(broadcastPeerInfo.peer_addr, broadcastAddress, sizeof(broadcastAddress));
         broadcastPeerInfo.channel = chan;  
@@ -69,11 +65,17 @@ void ESPNowMux::check() {
 }
 
 ESPNowMux::ESPNowMux() { 
-    recvCbWrapper = CallbackWrapper<void,const uint8_t *, const uint8_t *, int>::wrap(
-       //(std::function<void(const uint8_t *, const uint8_t *, int)>)
-        [this](const uint8_t *mac, const uint8_t *data, int len) { 
-            this->onRecv(mac, data, len);
+#if ESP_ARDUINO_VERSION_MAJOR == 3     
+    recvCbWrapper = CallbackWrapper<void,const esp_now_recv_info *, const uint8_t *, int>::wrap(
+        [this](const esp_now_recv_info *info, const uint8_t *data, int len) { 
+            this->onRecv(info->src_addr, data, len);
     });
+#else
+    recvCbWrapper = CallbackWrapper<void,const uint8_t *, const uint8_t *, int>::wrap(
+     [this](const uint8_t *mac, const uint8_t *data, int len) { 
+         this->onRecv(mac, data, len);
+ });
+#endif
     sendCbWrapper = CallbackWrapper<void,const uint8_t *, esp_now_send_status_t>::wrap(
         //(std::function<void(const uint8_t *, esp_now_send_status_t)>)
         [this](const uint8_t *, esp_now_send_status_t) { 

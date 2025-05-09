@@ -13,22 +13,22 @@ void printMac(const uint8_t *x) {
               x, x[0], x[1], x[2], x[3], x[4], x[5]);
 }
   
-
-void ESPNowMuxOnRecv(const uint8_t * mac, const uint8_t *in, int len) { 
-    ESPNowMux::Instance->onRecv(mac, in, len);
-}
-void ESPNowMuxOnSend(const uint8_t *mac_addr, esp_now_send_status_t s) { 
-   ESPNowMux::Instance->pending = false;
+// TODO replace these with dynamic wrapper use inside ESPNowMux class
+//void ESPNowMuxOnRecv(const uint8_t * mac, const uint8_t *in, int len) { 
+//    ESPNowMux::Instance->onRecv(mac, in, len);
+//}
+//void ESPNowMuxOnSend(const uint8_t *mac_addr, esp_now_send_status_t s) { 
+//   ESPNowMux::Instance->pending = false;
    //Serial.printf("ESPNowMuxOnSend: %08d %d\n", millis(), s);
-}
+//}
 #if ESP_ARDUINO_VERSION_MAJOR == 3 
-void ESPNowMuxOnRecv_v3(const esp_now_recv_info *info, const uint8_t *in, int len) { 
-    ESPNowMuxOnRecv(info->src_addr, in, len);
-}
+//void ESPNowMuxOnRecv_v3(const esp_now_recv_info *info, const uint8_t *in, int len) { 
+//    ESPNowMuxOnRecv(info->src_addr, in, len);
+//}
 #endif
 
-ESPNowMux espNowMux;
-ESPNowMux *ESPNowMux::Instance = NULL; // TODO replace this with static onFirstUse() wrapper
+ESPNowMux defaultEspNowMux;
+//ESPNowMux *ESPNowMux::Instance = NULL; // TODO replace this with static onFirstUse() wrapper
 
 void ESPNowMux::check() {
     if (!initialized) { 
@@ -48,11 +48,11 @@ void ESPNowMux::check() {
         esp_now_deinit();
         esp_now_init();
     #if ESP_ARDUINO_VERSION_MAJOR == 3 
-        esp_now_register_recv_cb(ESPNowMuxOnRecv_v3);
+        esp_now_register_recv_cb(recvCbWrapper);
     #else
-        esp_now_register_recv_cb(ESPNowMuxOnRecv);
+        esp_now_register_recv_cb(recvCbWrapper);
     #endif
-        esp_now_register_send_cb(ESPNowMuxOnSend);
+        esp_now_register_send_cb(sendCbWrapper);
         memcpy(broadcastPeerInfo.peer_addr, broadcastAddress, sizeof(broadcastAddress));
         broadcastPeerInfo.channel = chan;  
         broadcastPeerInfo.encrypt = false;
@@ -66,6 +66,19 @@ void ESPNowMux::check() {
         }
         esp_wifi_set_promiscuous(1);
     }
+}
+
+ESPNowMux::ESPNowMux() { 
+    recvCbWrapper = CallbackWrapper<void,const uint8_t *, const uint8_t *, int>::wrap(
+       //(std::function<void(const uint8_t *, const uint8_t *, int)>)
+        [this](const uint8_t *mac, const uint8_t *data, int len) { 
+            this->onRecv(mac, data, len);
+    });
+    sendCbWrapper = CallbackWrapper<void,const uint8_t *, esp_now_send_status_t>::wrap(
+        //(std::function<void(const uint8_t *, esp_now_send_status_t)>)
+        [this](const uint8_t *, esp_now_send_status_t) { 
+            this->pending = false;
+    });
 }
 void ESPNowMux::onRecv(const uint8_t *mac, const uint8_t *data, int len) {
     lastReceiveUs = micros(); 

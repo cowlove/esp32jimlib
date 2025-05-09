@@ -219,7 +219,7 @@ void RemoteSensorClient::init(const string &schema/*=""*/) {
     string s = *lastSchema;
     array = new RemoteSensorModule(mac.c_str(), s.c_str());
     array->beginClient();
-    espNowMux.defaultChannel = *lastChannel; 
+    defaultEspNowMux.defaultChannel = *lastChannel; 
     if (*sleepRemainingMs > 0) { // look if setPartialDeepSleep() was called, resume sleeping
         inhibitStartMs = millis();
         inhibitMs = (int)*sleepRemainingMs;
@@ -248,7 +248,7 @@ void RemoteSensorClient::onReceive(const string &s) {
             string val = w.substr(w.find("=") + 1);
             if (name == "MAC") {
                 if (val != mac) return;
-                *lastChannel = espNowMux.defaultChannel;
+                *lastChannel = defaultEspNowMux.defaultChannel;
                 lastReceive = millis();
             }
             else if (name == "NEWSCHEMA") updatingSchema = true;
@@ -303,9 +303,9 @@ void RemoteSensorClient::run() {
         }
         // channel hopping
         if (channelHop == true && millis() - lastReceive > 10000) {
-            espNowMux.defaultChannel = (espNowMux.defaultChannel + 1) % 14;
-            espNowMux.stop();
-            espNowMux.firstInit = true;
+            defaultEspNowMux.defaultChannel = (defaultEspNowMux.defaultChannel + 1) % 14;
+            defaultEspNowMux.stop();
+            defaultEspNowMux.firstInit = true;
             lastReceive = millis();
         }
     }

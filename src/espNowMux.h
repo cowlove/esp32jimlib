@@ -9,6 +9,7 @@
 #endif
 
 #include "jimlib.h"
+#include "callbackWrapper.h"
 
 class BeaconSynchronizedWakeup { 
     struct PrivData;
@@ -30,14 +31,14 @@ public:
     bool pending = false;
     uint32_t lastReceiveUs = 0;
     bool alwaysBroadcast = false;
-    ESPNowMux() { Instance = this; } // TODO static constructor order issue, 
     void stop();
     bool firstInit = true;
     void check();
     void onRecv(const uint8_t *mac, const uint8_t *data, int len);
     void registerReadCallback(const char *prefix, std::function<void(const uint8_t *mac, const uint8_t *data, int len)> cb);
     void send(const char *prefix, const uint8_t *buf, int n, int tmo = 100);
-    static ESPNowMux *Instance;
+    //static ESPNowMux *Instance;
+    ESPNowMux();
 private:
     uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     esp_now_peer_info_t broadcastPeerInfo;
@@ -49,9 +50,13 @@ private:
     };
     vector<cbInfo> callbacks;
     bool initialized = false;
+
+    esp_now_recv_cb_t recvCbWrapper = NULL;
+    esp_now_send_cb_t sendCbWrapper = NULL;
+
 };
 
 
 
-extern ESPNowMux espNowMux;
+extern ESPNowMux defaultEspNowMux;
 #endif // ESPNOWMUX_H

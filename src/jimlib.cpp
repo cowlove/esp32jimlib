@@ -650,8 +650,9 @@ String buf2str(const byte *buf, int len) {
 #include "espNowMux.h"
 extern JStuff j;
 void wifiDisconnect() {
-	if (ESPNowMux::Instance != NULL)
-		ESPNowMux::Instance->stop();
+	//TODO: need a way to shut down espMuxes that may be running 
+	//if (ESPNowMux::Instance != NULL)
+	//	ESPNowMux::Instance->stop();
     WiFi.disconnect();
     WiFi.mode(WIFI_OFF);
     j.jw.enabled = false;

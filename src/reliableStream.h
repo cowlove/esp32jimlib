@@ -135,8 +135,9 @@ protected:
     }
   } 
   bool initialized = false;
-  T client;
   virtual void reconnect() = 0;
+public:
+  T client;
 };
 
 class ReliableTcpServer : public ReliableStream<WiFiClient> {
@@ -176,8 +177,11 @@ class ESPNowClient {
   SemaphoreHandle_t mutex;
   bool initialized = false;
 public:
+  ESPNowMux *enMux;
   string prefix;
-  ESPNowClient()  {}
+  ESPNowClient(ESPNowMux *m = &defaultEspNowMux)  {
+    enMux = m;
+  }
   int read(uint8_t *out, size_t n) {
     xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
     int r = min(n, buf.length());
@@ -188,14 +192,14 @@ public:
   }
   uint32_t lastSend = 0;
   int write(const uint8_t *buf, size_t n) { 
-    espNowMux.send(prefix.c_str() /*prefix*/, buf, n);
+    enMux->send(prefix.c_str() /*prefix*/, buf, n);
     return n;
   }
   bool connected() { return initialized; } 
   void connect() {
     if(!initialized) { 
       mutex = xSemaphoreCreateMutex();
-      espNowMux.registerReadCallback(prefix.c_str() /*prefix*/, 
+      enMux->registerReadCallback(prefix.c_str() /*prefix*/, 
         [this](const uint8_t *mac, const uint8_t *data, int len){ 
           this->onRecv(mac, data, len); });
       initialized = true;
@@ -203,7 +207,7 @@ public:
   }
   int available() { return buf.length(); }
   void flush() {}
-  void stop() {  espNowMux.stop(); }
+  void stop() {  enMux->stop(); }
   void setTimeout(int) {}
   void onRecv(const uint8_t * mac, const uint8_t *in, int len) {
     xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
@@ -220,7 +224,7 @@ public:
 class ReliableStreamESPNow : public ReliableStream<ESPNowClient> {
 public: 
   ReliableStreamESPNow(const char *prefix, bool alwaysBroadcast = false) : ReliableStream(prefix, 0) {
-    espNowMux.alwaysBroadcast = alwaysBroadcast;
+    client.enMux->alwaysBroadcast = alwaysBroadcast;
   }
   void reconnect() { client.prefix = host; client.connect(); }
 };

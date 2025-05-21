@@ -1,3 +1,4 @@
+#ifdef ESP32
 #include "sensorNetworkEspNOW.h"
 #include "serialLog.h"
 #include "jimlib.h"
@@ -318,3 +319,5 @@ vector<SchemaParser::ParserFunc> &SchemaParser::parserList() {
     static vector<SchemaParser::ParserFunc> *onFirstUse = new vector<SchemaParser::ParserFunc>();
     return *onFirstUse;
 }
+#endif
+

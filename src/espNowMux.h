@@ -1,3 +1,4 @@
+#ifdef ESP32
 #ifndef ESPNOWMUX_H
 #define ESPNOWMUX_H
 #include <algorithm> 
@@ -83,3 +84,4 @@ public:
 #endif
 
 #endif // ESPNOWMUX_H
+#endif // ESP32

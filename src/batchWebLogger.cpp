@@ -1,3 +1,4 @@
+#ifdef ESP32
 #include "batchWebLogger.h"
 #include "serialLog.h"
 #include "jimlib.h"
@@ -5,8 +6,11 @@
 #ifndef CSIM
 #include "FS.h"
 #include "LittleFS.h"
+#ifdef ESP32
 #include "HTTPClient.h"
-
+#else
+#include "ESP8266HTTPClient.h"
+#endif
 #endif
 
 #ifndef OUT
@@ -220,7 +224,6 @@ JsonDocument BatchWebLogger::post(JsonDocument hdrDoc) {
     hdrDoc["SSID"] = ssid.c_str();
     hdrDoc["IP"] =  ip.c_str();
     hdrDoc["RSSI"] = WiFi.RSSI();
-    hdrDoc["ARCH"] = ARDUINO_VARIANT;
     //adminDoc["AVER"] = ESP_ARDUINO_VERSION_STR;
 
     HTTPClient client;
@@ -421,3 +424,4 @@ FailRetryInterval::FailRetryInterval(const string &_name/* = ""*/, const string 
      : defaultWaitMin(_defaultWaitMin), name(_name),
      spiffsConsecutiveFails(string("/") + prefix + "FRI.fails", 0) {
 }
+#endif // ESP32

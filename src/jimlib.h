@@ -11,11 +11,14 @@
 #ifndef CSIM
 #include "ArduinoOTA.h"
 #include "WiFiUdp.h"
+#ifdef ESP32
 #include "driver/adc.h"
 #include "driver/ledc.h"
 #include <rom/uart.h>
 #if ESP_ARDUINO_VERSION_MAJOR == 3 
 #include <esp_mac.h>
+#endif
+#else // ESP32
 #endif
 
 // starting jimlib.cpp cleanup
@@ -56,6 +59,9 @@ std::string &ltrim(std::string &s);
 std::string &rtrim(std::string &s);
 std::string &trim(std::string &s);
 vector<string> split(const char *line, const char *delim);
+vector<string> split(const string &line, const char *delim);
+vector<string> split(const string &line, char);
+
   
 int scanI2c();
 void printPins();
@@ -269,6 +275,7 @@ template<class T>
 struct SPIFFSVariableFake {
 	const T def;
 	SPIFFSVariableFake(const char *f, const T &d) : def(d) {}
+	SPIFFSVariableFake(const string &, const T &d) : def(d) {}
 	operator const T() { return def; }
 	SPIFFSVariableFake & operator=(const T&v) { return *this; }
 };
@@ -821,6 +828,7 @@ static inline float round(float f, float prec) {
 
 const char *reset_reason_string(int reason);
 
+#ifdef ESP32
 struct LightSleepPWM {
     int pin;
     ledc_channel_t chan;
@@ -828,7 +836,7 @@ struct LightSleepPWM {
 	void ledcLightSleepSet(int i);
 	int getDuty();
 };
-
+#endif
 
 string floatRemoveTrailingZeros(string &);
 

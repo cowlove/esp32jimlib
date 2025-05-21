@@ -1,3 +1,4 @@
+#ifdef ESP32
 #ifndef __SENSORNETWORKESPNOW_H_
 #define __SENSORNETWORKESPNOW_H_
 #include "jimlib.h"
@@ -576,3 +577,4 @@ public:
 
 //static SchemaList::Register();
 #endif //__SENSORNETWORKESPNOW_H_
+#endif // ESP32

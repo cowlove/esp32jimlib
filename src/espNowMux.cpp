@@ -1,3 +1,4 @@
+#ifdef ESP32
 #include "espNowMux.h"
 #include "simulatedFailures.h"
 #include "serialLog.h"
@@ -372,3 +373,4 @@ void BeaconSynchronizedWakeup::printPkts() {
         printf("\n");
     }
 }
+#endif // ESP32

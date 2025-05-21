@@ -3,18 +3,21 @@
 #include <sstream>
 
 #ifndef CSIM
+#ifdef ESP32
+
 #include <esp_task_wdt.h>
 #include <esp_mac.h>
 #include <rom/rtc.h>
+#include <driver/ledc.h>
+#include <esp_sleep.h>
 #include <HTTPClient.h>
+#else
+#include <ESP8266HTTPClient.h>
+#endif
 #include <PubSubClient.h>
 #include "Wire.h"
 #include <OneWireNg.h>
 #include <OneWireNg_CurrentPlatform.h>
-#include "driver/ledc.h"
-//#include "rom/uart.h"
-#include <HTTPClient.h>
-#include <esp_sleep.h>
 
 
 
@@ -42,7 +45,8 @@ void ledcInit(int pin, int freq, int res, int channel) {
 }
 
 void wdtInit(int sec) {
-#if ESP_ARDUINO_VERSION_MAJOR == 3
+#ifdef ESP32
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
 	esp_task_wdt_config_t c; 
 	c.timeout_ms = (sec)*1000; 
 	c.idle_core_mask = 0x1; 
@@ -54,14 +58,21 @@ void wdtInit(int sec) {
 	esp_task_wdt_init(sec, true);
 	esp_task_wdt_add(NULL);
 #endif
+#else // ESP32
+	ESP.wdtEnable(sec * 1000);
+#endif
 }
 
+#ifdef ESP32
 void wdtAdd() { 
 	esp_task_wdt_add(NULL);
 }
 void wdtReset() { 
 	esp_task_wdt_reset();
 }
+#else // ESP32
+void wdtReset() { ESP.wdtFeed(); }
+#endif // ESP32
 
 String Sfmt(const char *format, ...) { 
     va_list args;
@@ -510,7 +521,14 @@ int getLedPin() {
 }
 
 
-int getResetReason(int cpu) { return rtc_get_reset_reason(cpu); }
+int getResetReason(int cpu) { 
+#ifdef ESP32
+	return rtc_get_reset_reason(cpu);
+#else
+	rst_info *resetInfo =  ESP.getResetInfoPtr();
+	return resetInfo->reason;
+#endif
+}
 
 DeepSleepManager &dsm() { 
 	static DeepSleepManager *firstUse = new DeepSleepManager();
@@ -543,10 +561,14 @@ const char *reset_reason_string(int reason) {
 void DeepSleepManager::deepSleep(uint32_t ms) {
 	prepareSleep(ms);
 	OUT("DEEP SLEEP for %.2f was awake %.2fs\n", ms/1000.0, millis()/1000.0);
+#ifdef ESP32
 	esp_sleep_enable_timer_wakeup(1000LL * ms);
 	fflush(stdout);
 	uart_tx_wait_idle(CONFIG_CONSOLE_UART_NUM);
 	esp_deep_sleep_start();        	
+#else 
+	ESP.deepSleep(ms);
+#endif
 }
 
 void DeepSleepElapsedTimer::checkInit() { 
@@ -676,6 +698,7 @@ bool wifiConnect() {
     return WiFi.status() == WL_CONNECTED;
 }
 
+#ifdef ESP32
 static const ledc_timer_t LEDC_LS_TIMER  = LEDC_TIMER_0;
 static const ledc_mode_t LEDC_LS_MODE = LEDC_LOW_SPEED_MODE;
 
@@ -721,6 +744,8 @@ void LightSleepPWM::ledcLightSleepSet(int i) {
 	//    ledc_get_duty(LEDC_LS_MODE, chan));
 }
 int LightSleepPWM::getDuty() { return ledc_get_duty(LEDC_LS_MODE, chan); }     
+
+#endif // ESP32
 
 
 bool HzTimer::hz(float h) {

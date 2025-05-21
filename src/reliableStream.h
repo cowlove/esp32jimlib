@@ -1,3 +1,4 @@
+#ifdef ESP32
 #ifndef RELIABLESTREAM_H
 #define RELIABLESTREAM_H
 #include <string>
@@ -229,3 +230,5 @@ public:
   void reconnect() { client.prefix = host; client.connect(); }
 };
 #endif // RELIABLESTREAM_H
+#endif // ESP32
+       //

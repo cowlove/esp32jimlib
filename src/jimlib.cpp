@@ -774,7 +774,7 @@ string floatRemoveTrailingZeros(string &s) {
 }
 
 
-void JStuff::	run() { 
+void JStuff::run() { 
 	if (beginRan == false)
 		begin();
 	//quickRebootCounter.run();

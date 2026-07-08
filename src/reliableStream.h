@@ -80,6 +80,8 @@ public:
       s.assign((char *)buf, n);
       lastRecv = millis();
       //printf("RECV <<<< %s\n", s.c_str()); 
+      //if (readBuffer.length() > 2048)
+      //    readBuffer = "";
       readBuffer += s;
     } 
   

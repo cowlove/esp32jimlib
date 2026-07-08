@@ -161,7 +161,7 @@ class ConfPanelTransportEmbedded {
   bool intialized = false;
   ReliableStreamInterface *stream;
   uint16_t lastRun = 0;
-  float hz = 5;
+  float hz = 10;
 public:
   int nextClientIndex = 0;
   vector <ConfPanelClient *> clients;
@@ -172,6 +172,7 @@ public:
   void run() {
       if (millis() - lastRun < 1000 / hz)
         return;
+      lastRun = millis();
       string s;
       for (auto c : clients) 
           s += c->readData();    

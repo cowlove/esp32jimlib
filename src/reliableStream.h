@@ -61,6 +61,7 @@ public:
     read(s);
     return s;
   }
+  bool writeBusy() { return client.writeBusy(); }
   int read(uint8_t *buf, int len) { 
     // TODO!!! this should not be the main read function, switch over to 
     // the one that returns a string.  This will discard the rest of a packet
@@ -212,6 +213,7 @@ public:
   void flush() {}
   void stop() {  enMux->stop(); }
   void setTimeout(int) {}
+  bool writeBusy() { return enMux->writeBusy(); }
   void onRecv(const uint8_t * mac, const uint8_t *in, int len) {
     xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
     string s;

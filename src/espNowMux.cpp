@@ -65,6 +65,11 @@ void ESPNowMux::check() {
     }
 }
 
+bool ESPNowMux::writeBusy() {
+    check();
+    return pending;
+}
+
 ESPNowMux::ESPNowMux() { 
 #if ESP_ARDUINO_VERSION_MAJOR == 3     
     recvCbWrapper = CallbackWrapper<void,const esp_now_recv_info *, const uint8_t *, int>::wrap(

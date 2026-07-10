@@ -35,6 +35,7 @@ public:
     void stop();
     bool firstInit = true;
     void check();
+    bool writeBusy();
     void onRecv(const uint8_t *mac, const uint8_t *data, int len);
     void registerReadCallback(const char *prefix, std::function<void(const uint8_t *mac, const uint8_t *data, int len)> cb);
     void send(const char *prefix, const uint8_t *buf, int n, int tmo = 100);

@@ -5,6 +5,11 @@
 
 class SL30 {
 public:
+    static constexpr unsigned char FLAG_FROM = 1 << 2;
+    static constexpr unsigned char FLAG_TO = 1 << 3;
+    static constexpr unsigned char FLAG_NAV_SUPER = 1 << 6;
+    static constexpr unsigned char FLAG_NAV_VALID = 1 << 7;
+
     std::string twoenc(unsigned char x) {
         char r[3];
         r[0] = (((x & 0xf0) >> 4) + 0x30);
@@ -28,10 +33,20 @@ public:
     }
     std::string setCDI(double hd, double vd) {
         int flags = 0b11111010;
+        return setCDI(hd, vd, flags);
+    }
+    std::string setCDI(double hd, double vd, bool to, bool from) {
+        unsigned char flags = FLAG_NAV_SUPER | FLAG_NAV_VALID;
+        if (to)
+            flags |= FLAG_TO;
+        if (from)
+            flags |= FLAG_FROM;
+        return setCDI(hd, vd, flags);
+    }
+    std::string setCDI(double hd, double vd, unsigned char flags) {
         hd *= 127 / 3;
         vd *= 127 / 3;
         return pmrrv((std::string("21") + twoenc(hd) + twoenc(vd) + twoenc(flags)).c_str());
     }
 };
-    
     

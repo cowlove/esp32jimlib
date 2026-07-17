@@ -1,11 +1,11 @@
 #pragma once
+#include <cstdio>
 #include <string>
 
 // From data format described in web search "SL30 Installation Manual PDF" 
 
 class SL30 {
 public:
-    static constexpr unsigned char FLAG_LOCALIZER = 1 << 1;
     static constexpr unsigned char FLAG_FROM = 1 << 2;
     static constexpr unsigned char FLAG_TO = 1 << 3;
     static constexpr unsigned char FLAG_NAV_SUPER = 1 << 6;
@@ -43,11 +43,7 @@ public:
         return setCDI(hd, vd, flags);
     }
     std::string setCDI(double hd, double vd, bool to, bool from) {
-        // Some CDI hardware appears to use localizer-detect as the generic
-        // lateral CDI-valid indication, despite the SL30 manual describing it
-        // specifically as localizer detect. Keep it asserted for simulated
-        // VOR lateral guidance as well.
-        unsigned char flags = FLAG_LOCALIZER | FLAG_NAV_SUPER | FLAG_NAV_VALID;
+        unsigned char flags = FLAG_NAV_SUPER | FLAG_NAV_VALID;
         if (to)
             flags |= FLAG_TO;
         if (from)
@@ -63,6 +59,15 @@ public:
         lastCdiVdByte = (unsigned char)vd;
         lastCdiFlags = flags;
         return pmrrv((std::string("21") + twoenc(hd) + twoenc(vd) + twoenc(flags)).c_str());
+    }
+    std::string setVORRadial(double radialTrue) {
+        int radialTenths = (int)(radialTrue * 10.0 + 0.5);
+        radialTenths %= 3600;
+        if (radialTenths < 0)
+            radialTenths += 3600;
+        char r[8];
+        std::snprintf(r, sizeof(r), "23V%03d%d", radialTenths / 10, radialTenths % 10);
+        return pmrrv(r);
     }
 };
     

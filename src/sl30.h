@@ -5,6 +5,7 @@
 
 class SL30 {
 public:
+    static constexpr unsigned char FLAG_LOCALIZER = 1 << 1;
     static constexpr unsigned char FLAG_FROM = 1 << 2;
     static constexpr unsigned char FLAG_TO = 1 << 3;
     static constexpr unsigned char FLAG_NAV_SUPER = 1 << 6;
@@ -42,7 +43,11 @@ public:
         return setCDI(hd, vd, flags);
     }
     std::string setCDI(double hd, double vd, bool to, bool from) {
-        unsigned char flags = FLAG_NAV_SUPER | FLAG_NAV_VALID;
+        // Some CDI hardware appears to use localizer-detect as the generic
+        // lateral CDI-valid indication, despite the SL30 manual describing it
+        // specifically as localizer detect. Keep it asserted for simulated
+        // VOR lateral guidance as well.
+        unsigned char flags = FLAG_LOCALIZER | FLAG_NAV_SUPER | FLAG_NAV_VALID;
         if (to)
             flags |= FLAG_TO;
         if (from)

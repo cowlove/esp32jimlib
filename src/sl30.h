@@ -10,6 +10,12 @@ public:
     static constexpr unsigned char FLAG_NAV_SUPER = 1 << 6;
     static constexpr unsigned char FLAG_NAV_VALID = 1 << 7;
 
+    double lastCdiHd = 0;
+    double lastCdiVd = 0;
+    unsigned char lastCdiHdByte = 0;
+    unsigned char lastCdiVdByte = 0;
+    unsigned char lastCdiFlags = 0;
+
     std::string twoenc(unsigned char x) {
         char r[3];
         r[0] = (((x & 0xf0) >> 4) + 0x30);
@@ -44,8 +50,13 @@ public:
         return setCDI(hd, vd, flags);
     }
     std::string setCDI(double hd, double vd, unsigned char flags) {
+        lastCdiHd = hd;
+        lastCdiVd = vd;
         hd *= 127 / 3;
         vd *= 127 / 3;
+        lastCdiHdByte = (unsigned char)hd;
+        lastCdiVdByte = (unsigned char)vd;
+        lastCdiFlags = flags;
         return pmrrv((std::string("21") + twoenc(hd) + twoenc(vd) + twoenc(flags)).c_str());
     }
 };

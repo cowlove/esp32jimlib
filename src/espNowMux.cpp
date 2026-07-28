@@ -124,7 +124,7 @@ void ESPNowMux::send(const char *prefix, const uint8_t *buf, int n, int tmo /*= 
     }
     size_t sent = 0;
     while(sent < n) { 
-        uint8_t txBuf[200];
+        uint8_t txBuf[ESPNowMux::physicalPacketBytes];
         int pl = min((size_t)(sizeof(txBuf) - strlen(prefix)), n - sent);
         //if (pl > 150) { // throttle espNOW for reliability 
         //  while(millis() - lastSend < 30) delay(1);

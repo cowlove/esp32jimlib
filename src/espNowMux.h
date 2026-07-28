@@ -27,6 +27,13 @@ public:
 class ESPNowMux { 
     uint32_t lastSend = 0;
 public:
+    // Keep each ESP-NOW transmission at or below this many bytes.  Although
+    // ESP-NOW can support a larger vendor payload on some core versions, this
+    // library deliberately uses a conservative 200-byte physical packet for
+    // compatibility and reliability.  send() splits larger logical payloads;
+    // callers that require atomic delivery must include their prefix and any
+    // higher-level framing when checking against this limit.
+    static constexpr size_t physicalPacketBytes = 200;
     BeaconSynchronizedWakeup bwakeup;
     int defaultChannel = 1;
     bool pending = false;

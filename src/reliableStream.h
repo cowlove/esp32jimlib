@@ -9,6 +9,7 @@ class ReliableStreamInterface {
 public:
   virtual int read(string &) = 0;
   virtual void write(const string &) = 0;
+  virtual uint32_t resetCount() const = 0;
   void begin(const char *h, uint16_t p) { host = h; port = p; }
 protected:
   string host;
@@ -26,6 +27,7 @@ protected:
 template<class T>
 class ReliableStream : public ReliableStreamInterface { 
   uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
+  uint32_t clientResetCount = 0;
   const string ACK_pkt = "-1 ACK\n";
   string readBuffer;
 public:
@@ -47,7 +49,7 @@ public:
         client.flush();
         if (n <= 0) {
           //Serial.printf("ReliableStream: write error, closing\n");
-          client.stop();
+          resetClient();
         }
         if (n > 0) 
           lastSend = millis();
@@ -62,6 +64,7 @@ public:
     return s;
   }
   bool writeBusy() { return client.writeBusy(); }
+  uint32_t resetCount() const override { return clientResetCount; }
   int read(uint8_t *buf, int len) { 
     // TODO!!! this should not be the main read function, switch over to 
     // the one that returns a string.  This will discard the rest of a packet
@@ -74,7 +77,7 @@ public:
       int n = client.read(buf, len); 
       if (n <= 0) {
         Serial.printf("ReliableStream: read error, closing\n");
-        client.stop();
+        resetClient();
         break; 
       }
       string s;
@@ -134,10 +137,14 @@ protected:
     if (millis() - lastRecv > 9000) {
       lastRecv = millis();
       //Serial.printf("ReliableStream: readTimeout, closing\n");
-      if (client.connected()) 
-        client.stop();
+      if (client.connected())
+        resetClient();
     }
-  } 
+  }
+  void resetClient() {
+    clientResetCount++;
+    client.stop();
+  }
   bool initialized = false;
   virtual void reconnect() = 0;
 public:

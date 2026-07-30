@@ -84,7 +84,11 @@ ESPNowMux::ESPNowMux() {
 #endif
     sendCbWrapper = CallbackWrapper<void,const uint8_t *, esp_now_send_status_t>::wrap(
         //(std::function<void(const uint8_t *, esp_now_send_status_t)>)
-        [this](const uint8_t *, esp_now_send_status_t) { 
+        [this](const uint8_t *, esp_now_send_status_t status) {
+            if (status == ESP_NOW_SEND_SUCCESS)
+                this->sendSuccesses++;
+            else
+                this->sendFailures++;
             this->pending = false;
     });
 }
@@ -138,14 +142,18 @@ void ESPNowMux::send(const char *prefix, const uint8_t *buf, int n, int tmo /*= 
         }
         if (pending == false) {
             pending = true;
+            sendAttempts++;
             int r = esp_now_send(mac, txBuf, pl + strlen(prefix));
             //Serial.printf("esp_now_send(): %08d %d\n", millis(), pl);
             if (r != 0) {
+                sendFailures++;
+                pending = false;
                 Serial.printf("esp_now_send(%02x:%02x:%02x:%02x:%02x:%02x, %d) error %d\n", 
                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], pl + strlen(prefix), r);
             }
             sent += pl;
         } else {
+            sendBusyDrops++;
             //Serial.printf("ESPNowMux::write timeout(), closing\n");
             stop();
             return;

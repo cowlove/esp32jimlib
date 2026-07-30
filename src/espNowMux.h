@@ -26,6 +26,10 @@ public:
 
 class ESPNowMux { 
     uint32_t lastSend = 0;
+    volatile uint32_t sendAttempts = 0;
+    volatile uint32_t sendSuccesses = 0;
+    volatile uint32_t sendFailures = 0;
+    volatile uint32_t sendBusyDrops = 0;
 public:
     // Keep each ESP-NOW transmission at or below this many bytes.  Although
     // ESP-NOW can support a larger vendor payload on some core versions, this
@@ -43,6 +47,10 @@ public:
     bool firstInit = true;
     void check();
     bool writeBusy();
+    uint32_t getSendAttempts() const { return sendAttempts; }
+    uint32_t getSendSuccesses() const { return sendSuccesses; }
+    uint32_t getSendFailures() const { return sendFailures; }
+    uint32_t getSendBusyDrops() const { return sendBusyDrops; }
     void onRecv(const uint8_t *mac, const uint8_t *data, int len);
     void registerReadCallback(const char *prefix, std::function<void(const uint8_t *mac, const uint8_t *data, int len)> cb);
     void send(const char *prefix, const uint8_t *buf, int n, int tmo = 100);

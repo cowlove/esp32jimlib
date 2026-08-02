@@ -3,12 +3,15 @@
 #define RELIABLESTREAM_H
 #include <string>
 #include "Arduino_CRC32.h" 
+#include "reliableStreamFraming.h"
 using std::string;
 
 class ReliableStreamInterface {
 public:
   virtual int read(string &) = 0;
-  virtual void write(const string &) = 0;
+  void write(const string &s) { write(s, false); }
+  virtual void write(const string &, bool onePacket) = 0;
+  virtual uint32_t getOnePacketMissCount() const = 0;
   virtual uint32_t resetCount() const = 0;
   void begin(const char *h, uint16_t p) { host = h; port = p; }
 protected:
@@ -29,11 +32,19 @@ protected:
 // The legacy class/file name is retained for API compatibility. A more
 // accurate future name would be ReliablePacket. Likewise, the historical
 // "-1 ACK" control payload is not an acknowledgement: it does not confirm
-// application delivery and is deliberately rejected by CRC validation. It is
-// a liveness heartbeat/probe used to exercise the underlying channel.
+// application delivery and is deliberately sent outside application framing,
+// so it is never returned to the caller. It is a liveness heartbeat/probe used
+// to exercise the underlying channel.
 //
-// These comments describe the intended contract, not a claim that the
-// current delimiter implementation is robust.
+// Frames use ~<escaped-byte-count>|<escaped-payload>|<CRC32>. Only the three
+// reserved printable bytes '~', '|' and '%' are percent-escaped. Length and
+// CRC validation provide atomic reads and an unescaped '~' provides a clean
+// synchronization point after loss. Newlines, NULs and other payload bytes are
+// not modified by the framing layer.
+//
+// write(payload, true) is a one-physical-packet performance hint. It never
+// rejects a logical write. Packet transports may count misses when the final
+// encoded frame requires fragmentation; stream transports ignore the hint.
 
 template<class T>
 class ReliableStream : public ReliableStreamInterface { 
@@ -42,21 +53,24 @@ class ReliableStream : public ReliableStreamInterface {
   const string ACK_pkt = "-1 ACK\n";
   string readBuffer;
 public:
-  string separator = string("\nXOXEND\n");
   ReliableStream() {}
   ReliableStream(const char *s, uint16_t p) { begin(s, p); }
-  void write(const string &s) { return write(s.c_str(), s.length()); }
-  void write(const char *buf, int len) { return write((const uint8_t *)buf, len); }
-  void write(const uint8_t *buf, int len) { 
+  void write(const string &s, bool onePacket = false) override {
+    return write((const uint8_t *)s.data(), s.length(), onePacket);
+  }
+  void write(const char *s, bool onePacket) {
+    return write((const uint8_t *)s, strlen(s), onePacket);
+  }
+  void write(const char *buf, int len, bool onePacket = false) {
+    return write((const uint8_t *)buf, len, onePacket);
+  }
+  void write(const uint8_t *buf, int len, bool onePacket = false) {
     if (len > 0) { 
       check();
       if (client.connected()) { 
-        string s;
-        s.assign((char *)buf, len);
-        Arduino_CRC32 crc32;
-        uint32_t cksum = crc32.calc((uint8_t const *)s.c_str(), s.length());
-        s = sfmt("%x ", cksum) + s + separator;
-        int n = client.write((uint8_t *)s.c_str(), s.length()); 
+        string s = ReliableStreamFraming::encode(buf, len);
+        int n = clientWrite(client, (const uint8_t *)s.data(), s.length(),
+            onePacket, 0);
         client.flush();
         if (n <= 0) {
           //Serial.printf("ReliableStream: write error, closing\n");
@@ -76,73 +90,64 @@ public:
   }
   bool writeBusy() { return client.writeBusy(); }
   uint32_t resetCount() const override { return clientResetCount; }
+  uint32_t getOnePacketMissCount() const override {
+    return clientOnePacketMissCount(client, 0);
+  }
   int read(uint8_t *buf, int len) { 
-    // TODO!!! this should not be the main read function, switch over to 
-    // the one that returns a string.  This will discard the rest of a packet
-    // if it's larger than len 
-    check();
-    if (readBuffer.length() == 0 && (!client.connected() || !client.available())) 
-      return 0;
-
-    while(client.available()) { 
-      int n = client.read(buf, len); 
-      if (n <= 0) {
-        Serial.printf("ReliableStream: read error, closing\n");
-        resetClient();
-        break; 
-      }
-      string s;
-      s.assign((char *)buf, n);
-      lastRecv = millis();
-      //printf("RECV <<<< %s\n", s.c_str()); 
-      //if (readBuffer.length() > 2048)
-      //    readBuffer = "";
-      readBuffer += s;
-    } 
-  
-    auto endp = readBuffer.find(separator); 
-    if (endp != string::npos) { 
-      string s = readBuffer.substr(0, endp);
-      //printf("RECV got a packet of length %d, readBuf len %d\n", endp, readBuffer.length());
-      uint32_t cksum = 0;
-      if (s.find(" ") != string::npos && sscanf(s.c_str(), "%x ", &cksum) == 1) {  
-        s = s.substr(s.find(" ") + 1, s.find(separator));
-        memcpy(buf, s.c_str(), min((int)len, (int)s.length()));
-        //printf("RECV     returning: '%s'\n", s.c_str());
-        readBuffer.erase(0, endp + separator.length());
-        Arduino_CRC32 crc32;
-        uint32_t cksum2 = crc32.calc((uint8_t const *)s.c_str(), s.length());
-        if (cksum != cksum2) { 
-          if (s.find(ACK_pkt) != string::npos)
-            printf("RECV bad cksum, discarding packet\n");
-          s = "";
-        }
-        return s.length(); 
-      }
-      readBuffer.erase(0, endp);
-    }
-    return 0;
+    string s;
+    int packetBytes = read(s);
+    if (packetBytes > len)
+      return -packetBytes;
+    if (packetBytes > 0)
+      memcpy(buf, s.data(), packetBytes);
+    return packetBytes;
   }
   int read(char *buf, int len) { return read((uint8_t *)buf, len); }
   int read(string &s) {
-    // UGH see note in read() above.  
-    char buf[4096];
     s = "";
-    int n = read(buf, sizeof(buf)); 
-    if (n > 0) 
-      s.assign(buf, n);    
+    check();
+    while (client.available()) {
+      uint8_t buf[512];
+      int n = client.read(buf, sizeof(buf));
+      if (n <= 0) {
+        Serial.printf("ReliableStream: read error, closing\n");
+        resetClient();
+        break;
+      }
+      readBuffer.append((const char *)buf, n);
+      lastRecv = millis();
+    }
+    ReliableStreamFraming::extract(readBuffer, s);
     return s.length(); 
   }
 protected:
+  template<class U>
+  static auto clientWrite(U &c, const uint8_t *buf, size_t len,
+      bool onePacket, int) -> decltype(c.write(buf, len, onePacket)) {
+    return c.write(buf, len, onePacket);
+  }
+  template<class U>
+  static int clientWrite(U &c, const uint8_t *buf, size_t len,
+      bool, long) {
+    return c.write(buf, len);
+  }
+  template<class U>
+  static auto clientOnePacketMissCount(const U &c, int)
+      -> decltype(c.getOnePacketMissCount()) {
+    return c.getOnePacketMissCount();
+  }
+  template<class U>
+  static uint32_t clientOnePacketMissCount(const U &, long) { return 0; }
+
   void check() { 
-    if (!client.connected() && lastRecon - millis() > 1000) {
+    if (!client.connected() && millis() - lastRecon > 1000) {
       reconnect();
       lastRecon = lastSend = lastRecv = millis();
     }
     client.setTimeout(6000);
     if (millis() - lastSend > 3000) { 
       lastSend = millis();
-      string s = ACK_pkt + separator;
+      string s = ACK_pkt;
       client.write((uint8_t *)s.c_str(), s.length());    
     }
     if (millis() - lastRecv > 9000) {
@@ -198,6 +203,7 @@ class ESPNowClient {
   string buf;  // TODO change to a CBQ
   SemaphoreHandle_t mutex;
   bool initialized = false;
+  uint32_t onePacketMissCount = 0;
 public:
   ESPNowMux *enMux;
   string prefix;
@@ -217,6 +223,12 @@ public:
     enMux->send(prefix.c_str() /*prefix*/, buf, n);
     return n;
   }
+  int write(const uint8_t *buf, size_t n, bool onePacket) {
+    if (onePacket && n + prefix.length() > ESPNowMux::physicalPacketBytes)
+      onePacketMissCount++;
+    return write(buf, n);
+  }
+  uint32_t getOnePacketMissCount() const { return onePacketMissCount; }
   bool connected() { return initialized; } 
   void connect() {
     if(!initialized) { 

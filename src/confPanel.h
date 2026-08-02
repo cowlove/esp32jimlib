@@ -160,8 +160,8 @@ class ConfPanelTransportEmbedded {
   WiFiUDP udp;
   bool intialized = false;
   ReliableStreamInterface *stream;
-  uint16_t lastRun = 0;
-  float hz = 10;
+  uint32_t lastRun = 0;
+  float hz = 5;
 public:
   int nextClientIndex = 0;
   vector <ConfPanelClient *> clients;

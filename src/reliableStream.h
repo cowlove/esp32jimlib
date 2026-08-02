@@ -17,12 +17,23 @@ protected:
 };
 
 
-// reads potentially unaligned and packetized data from client interface, 
-// prepends a CRC prefix and a separator suffix string, and provides a more reliable
-// packet interface.  also sends periodic ACK packets (that are deliberately 
-// dropped due to bad CRC), and handles reinitalizing the client layer on error
-// or timeout 
-// serious TODO deficiencies, see notes below 
+// Legacy naming note:
+//
+// ReliableStream is not a stream protocol in the application sense. It is a
+// logical-packet framing layer over a byte-oriented transport. The transport
+// may be TCP, UDP, ESP-NOW, or another implementation that coalesces,
+// fragments, or otherwise does not preserve write boundaries. A successful
+// read returns one complete logical packet or nothing; it does not promise
+// delivery, ordering, retransmission, or persistence across transport loss.
+//
+// The legacy class/file name is retained for API compatibility. A more
+// accurate future name would be ReliablePacket. Likewise, the historical
+// "-1 ACK" control payload is not an acknowledgement: it does not confirm
+// application delivery and is deliberately rejected by CRC validation. It is
+// a liveness heartbeat/probe used to exercise the underlying channel.
+//
+// These comments describe the intended contract, not a claim that the
+// current delimiter implementation is robust.
 
 template<class T>
 class ReliableStream : public ReliableStreamInterface { 

@@ -50,7 +50,10 @@ template<class T>
 class ReliableStream : public ReliableStreamInterface { 
   uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
   uint32_t clientResetCount = 0;
-  const string ACK_pkt = "-1 ACK\n";
+  static constexpr uint32_t initialInboundTimeoutMs = 3000;
+  static constexpr uint32_t maxInboundTimeoutMs = 30000;
+  uint32_t inboundTimeoutMs = initialInboundTimeoutMs;
+  const string HEARTBEAT_pkt = "-1 ACK\n";
   string readBuffer;
 public:
   ReliableStream() {}
@@ -145,13 +148,18 @@ protected:
       lastRecon = lastSend = lastRecv = millis();
     }
     client.setTimeout(6000);
+    if (client.available()) {
+      lastRecv = millis();
+      inboundTimeoutMs = initialInboundTimeoutMs;
+    }
     if (millis() - lastSend > 3000) { 
       lastSend = millis();
-      string s = ACK_pkt;
+      string s = HEARTBEAT_pkt;
       client.write((uint8_t *)s.c_str(), s.length());    
     }
-    if (millis() - lastRecv > 9000) {
+    if (millis() - lastRecv > inboundTimeoutMs) {
       lastRecv = millis();
+      inboundTimeoutMs = min(maxInboundTimeoutMs, inboundTimeoutMs * 2);
       //Serial.printf("ReliableStream: readTimeout, closing\n");
       if (client.connected())
         resetClient();

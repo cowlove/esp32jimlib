@@ -1,30 +1,31 @@
 #ifndef RELIABLESTREAMFRAMING_H
 #define RELIABLESTREAMFRAMING_H
 
-#include <ctype.h>
-#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string>
 
 #include "Arduino_CRC32.h"
 
-// Printable framing added by ReliableStream:
+// Printable, self-synchronizing logical-packet framing:
 //
-//   ~<escaped-payload-byte-count-in-hex>|<escaped-payload>|<8-hex-digit-crc>
+//   ~SSLLLL<escaped-payload>CCCCCCCC
 //
-// '~', '|' and '%' are encoded as %HH in the payload. Other bytes, including
-// newlines, NULs and control bytes, are left untouched. The byte count covers
-// the escaped wire payload. It makes the frame independent of transport read
-// and write boundaries without adding a binary or control-byte delimiter.
+// SS is an 8-bit logical-packet sequence number and LLLL is the exact number
+// of escaped payload bytes on the wire. '~' and '%' are encoded as %HH; all
+// other payload bytes are unchanged. The CRC covers the binary sequence byte,
+// the four ASCII length bytes, and the original decoded payload. The maximum
+// escaped payload is therefore 65,535 bytes, independent of transport packet
+// boundaries.
 class ReliableStreamFraming {
 public:
-  static std::string encode(const uint8_t *payload, size_t payloadBytes) {
+  static std::string encode(const uint8_t *payload, size_t payloadBytes,
+      uint8_t sequence) {
     std::string escaped;
     escaped.reserve(payloadBytes);
     for (size_t i = 0; i < payloadBytes; ++i) {
       uint8_t c = payload[i];
-      if (c == '~' || c == '|' || c == '%') {
+      if (c == '~' || c == '%') {
         static const char hex[] = "0123456789ABCDEF";
         escaped += '%';
         escaped += hex[c >> 4];
@@ -32,21 +33,27 @@ public:
       } else {
         escaped += (char)c;
       }
+      if (escaped.size() > 0xffff)
+        return std::string();
     }
 
+    char header[8];
+    snprintf(header, sizeof(header), "~%02X%04X", sequence,
+        (unsigned int)escaped.size());
+
+    std::string crcInput(1, (char)sequence);
+    crcInput.append(header + 3, 4);
+    crcInput.append((const char *)payload, payloadBytes);
     Arduino_CRC32 crc32;
-    uint32_t crc = crc32.calc(payload, payloadBytes);
-    char header[2 * sizeof(unsigned long) + 3];
-    char trailer[11];
-    snprintf(header, sizeof(header), "~%lX|", (unsigned long)escaped.size());
-    snprintf(trailer, sizeof(trailer), "|%08lX", (unsigned long)crc);
+    char trailer[9];
+    snprintf(trailer, sizeof(trailer), "%08lX",
+        (unsigned long)crc32.calc((const uint8_t *)crcInput.data(),
+            crcInput.size()));
     return std::string(header) + escaped + trailer;
   }
 
-  // Extracts the next complete, valid packet. Invalid candidates are dropped
-  // and parsing resumes at the next unescaped '~'. Returns false when no
-  // complete valid packet is currently buffered.
-  static bool extract(std::string &wire, std::string &payload) {
+  static bool extract(std::string &wire, std::string &payload,
+      uint8_t &sequence) {
     payload.clear();
     for (;;) {
       size_t start = wire.find('~');
@@ -56,88 +63,48 @@ public:
       }
       if (start != 0)
         wire.erase(0, start);
+      if (wire.size() < 7)
+        return false;
 
-      size_t separator = wire.find('|', 1);
+      uint32_t seq = 0, escapedBytes = 0;
+      if (!parseHex(wire.data() + 1, 2, seq) ||
+          !parseHex(wire.data() + 3, 4, escapedBytes)) {
+        wire.erase(0, 1);
+        continue;
+      }
+
+      const size_t frameBytes = 7 + (size_t)escapedBytes + 8;
       size_t restart = wire.find('~', 1);
-      if (restart != std::string::npos &&
-          (separator == std::string::npos || restart < separator)) {
-        wire.erase(0, restart);
-        continue;
-      }
-      if (separator == std::string::npos) {
-        // A 32-bit encoded length needs no more than eight hexadecimal digits.
-        if (wire.size() > 9)
-          wire.erase(0, 1);
-        else
-          return false;
-        continue;
-      }
-      if (separator == 1 || separator > 9) {
-        wire.erase(0, 1);
-        continue;
-      }
-
-      size_t escapedBytes = 0;
-      bool validLength = true;
-      for (size_t i = 1; i < separator; ++i) {
-        int digit = hexDigit(wire[i]);
-        if (digit < 0) {
-          validLength = false;
-          break;
-        }
-        escapedBytes = (escapedBytes << 4) | (size_t)digit;
-      }
-      if (!validLength) {
-        wire.erase(0, 1);
-        continue;
-      }
-
-      const size_t payloadStart = separator + 1;
-      if (escapedBytes > SIZE_MAX - payloadStart - 9) {
-        discardCandidate(wire);
-        continue;
-      }
-      const size_t payloadEnd = payloadStart + escapedBytes;
-      const size_t frameBytes = payloadEnd + 1 + 8;
-
-      // '~' is never emitted inside an encoded frame. Seeing it before the
-      // expected end proves that bytes were lost/corrupted, and gives us the
-      // next synchronization point immediately.
-      restart = wire.find('~', 1);
       if (restart != std::string::npos && restart < frameBytes) {
         wire.erase(0, restart);
         continue;
       }
       if (wire.size() < frameBytes)
         return false;
-      if (wire[payloadEnd] != '|') {
-        discardCandidate(wire);
-        continue;
-      }
 
       uint32_t expectedCrc = 0;
-      bool validCrc = true;
-      for (size_t i = payloadEnd + 1; i < frameBytes; ++i) {
-        int digit = hexDigit(wire[i]);
-        if (digit < 0) {
-          validCrc = false;
-          break;
-        }
-        expectedCrc = (expectedCrc << 4) | (uint32_t)digit;
+      if (!parseHex(wire.data() + 7 + escapedBytes, 8, expectedCrc)) {
+        discardCandidate(wire);
+        continue;
       }
 
       std::string decoded;
-      if (!validCrc || !decode(wire.data() + payloadStart, escapedBytes, decoded)) {
+      if (!decode(wire.data() + 7, escapedBytes, decoded)) {
         discardCandidate(wire);
         continue;
       }
 
+      uint8_t candidateSequence = (uint8_t)seq;
+      std::string crcInput(1, (char)candidateSequence);
+      crcInput.append(wire.data() + 3, 4);
+      crcInput += decoded;
       Arduino_CRC32 crc32;
       uint32_t actualCrc = crc32.calc(
-          (const uint8_t *)decoded.data(), decoded.size());
+          (const uint8_t *)crcInput.data(), crcInput.size());
       wire.erase(0, frameBytes);
       if (actualCrc != expectedCrc)
         continue;
+      sequence = candidateSequence;
       payload.swap(decoded);
       return true;
     }
@@ -151,6 +118,16 @@ private:
     return -1;
   }
 
+  static bool parseHex(const char *text, size_t bytes, uint32_t &value) {
+    value = 0;
+    for (size_t i = 0; i < bytes; ++i) {
+      int digit = hexDigit(text[i]);
+      if (digit < 0) return false;
+      value = (value << 4) | (uint32_t)digit;
+    }
+    return true;
+  }
+
   static bool decode(const char *encoded, size_t encodedBytes,
       std::string &decoded) {
     decoded.clear();
@@ -158,21 +135,16 @@ private:
     for (size_t i = 0; i < encodedBytes; ++i) {
       uint8_t c = (uint8_t)encoded[i];
       if (c != '%') {
-        // Reserved bytes can only appear through their escape sequence.
-        if (c == '~' || c == '|')
-          return false;
+        if (c == '~') return false;
         decoded += (char)c;
         continue;
       }
-      if (i + 2 >= encodedBytes)
-        return false;
+      if (i + 2 >= encodedBytes) return false;
       int high = hexDigit(encoded[++i]);
       int low = hexDigit(encoded[++i]);
-      if (high < 0 || low < 0)
-        return false;
+      if (high < 0 || low < 0) return false;
       uint8_t value = (uint8_t)((high << 4) | low);
-      if (value != '~' && value != '|' && value != '%')
-        return false;
+      if (value != '~' && value != '%') return false;
       decoded += (char)value;
     }
     return true;
@@ -180,10 +152,8 @@ private:
 
   static void discardCandidate(std::string &wire) {
     size_t restart = wire.find('~', 1);
-    if (restart == std::string::npos)
-      wire.clear();
-    else
-      wire.erase(0, restart);
+    if (restart == std::string::npos) wire.clear();
+    else wire.erase(0, restart);
   }
 };
 

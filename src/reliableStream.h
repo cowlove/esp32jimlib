@@ -12,6 +12,8 @@ public:
   void write(const string &s) { write(s, false); }
   virtual void write(const string &, bool onePacket) = 0;
   virtual uint32_t getOnePacketMissCount() const = 0;
+  virtual uint32_t getFrameLossCount() const = 0;
+  virtual uint32_t getSequenceDiscontinuityCount() const = 0;
   virtual uint32_t resetCount() const = 0;
   void begin(const char *h, uint16_t p) { host = h; port = p; }
 protected:
@@ -36,11 +38,9 @@ protected:
 // so it is never returned to the caller. It is a liveness heartbeat/probe used
 // to exercise the underlying channel.
 //
-// Frames use ~<escaped-byte-count>|<escaped-payload>|<CRC32>. Only the three
-// reserved printable bytes '~', '|' and '%' are percent-escaped. Length and
-// CRC validation provide atomic reads and an unescaped '~' provides a clean
-// synchronization point after loss. Newlines, NULs and other payload bytes are
-// not modified by the framing layer.
+// Frames use ~SSLLLL<escaped-payload><CRC32>. SS is a modulo-256 logical frame
+// sequence and LLLL is a fixed four-hex-digit escaped payload length. Only '~'
+// and '%' are percent-escaped. Newlines, NULs and other bytes are unchanged.
 //
 // write(payload, true) is a one-physical-packet performance hint. It never
 // rejects a logical write. Packet transports may count misses when the final
@@ -50,6 +50,9 @@ template<class T>
 class ReliableStream : public ReliableStreamInterface { 
   uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
   uint32_t clientResetCount = 0;
+  uint32_t frameLossCount = 0, sequenceDiscontinuityCount = 0;
+  uint8_t sendSequence = 0, receiveSequence = 0;
+  bool haveReceiveSequence = false;
   static constexpr uint32_t initialInboundTimeoutMs = 3000;
   static constexpr uint32_t maxInboundTimeoutMs = 30000;
   uint32_t inboundTimeoutMs = initialInboundTimeoutMs;
@@ -71,7 +74,10 @@ public:
     if (len > 0) { 
       check();
       if (client.connected()) { 
-        string s = ReliableStreamFraming::encode(buf, len);
+        string s = ReliableStreamFraming::encode(buf, len, sendSequence);
+        if (s.empty())
+          return; // Escaped payload exceeds the protocol's 65,535-byte limit.
+        sendSequence++;
         int n = clientWrite(client, (const uint8_t *)s.data(), s.length(),
             onePacket, 0);
         client.flush();
@@ -95,6 +101,10 @@ public:
   uint32_t resetCount() const override { return clientResetCount; }
   uint32_t getOnePacketMissCount() const override {
     return clientOnePacketMissCount(client, 0);
+  }
+  uint32_t getFrameLossCount() const override { return frameLossCount; }
+  uint32_t getSequenceDiscontinuityCount() const override {
+    return sequenceDiscontinuityCount;
   }
   int read(uint8_t *buf, int len) { 
     string s;
@@ -120,7 +130,18 @@ public:
       readBuffer.append((const char *)buf, n);
       lastRecv = millis();
     }
-    ReliableStreamFraming::extract(readBuffer, s);
+    uint8_t sequence = 0;
+    if (ReliableStreamFraming::extract(readBuffer, s, sequence)) {
+      if (haveReceiveSequence) {
+        uint8_t advance = (uint8_t)(sequence - receiveSequence);
+        if (advance == 0 || advance > 128)
+          sequenceDiscontinuityCount++;
+        else
+          frameLossCount += advance - 1;
+      }
+      receiveSequence = sequence;
+      haveReceiveSequence = true;
+    }
     return s.length(); 
   }
 protected:
@@ -167,6 +188,7 @@ protected:
   }
   void resetClient() {
     clientResetCount++;
+    haveReceiveSequence = false;
     client.stop();
   }
   bool initialized = false;

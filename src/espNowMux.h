@@ -11,6 +11,7 @@
 
 #include "jimlib.h"
 #include "callbackWrapper.h"
+#include "raw80211Capture.h"
 
 class BeaconSynchronizedWakeup { 
     struct PrivData;
@@ -86,8 +87,9 @@ class Csim_privateContext : public ESPNOW_csimOneProg {
 	CsimContext privContext;
 protected:
 	ESPNowMux privMux;
+	CsimCaptureSource capture;
 public:
-	Csim_privateContext(uint64_t mac = 0xddeeffddeef0) { 
+	Csim_privateContext(uint64_t mac = 0xddeeffddeef0) : capture(&privContext) {
 		privContext.mac = mac;
 		privContext.espnow = &privEspNow;
 		this->context = &privContext;

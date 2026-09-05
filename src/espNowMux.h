@@ -78,6 +78,21 @@ private:
 
 extern ESPNowMux defaultEspNowMux;
 
+#ifndef CSIM
+// Hardware counterpart to Csim_privateContext.  Keep the transport and
+// beacon-capture endpoints together so applications can select the parent
+// context at compile time without defining their own hardware wrapper.
+class HardwareContext {
+protected:
+	ESPNowMux& privMux;
+	Esp32WifiBeaconCaptureSource beaconCapture;
+public:
+	explicit HardwareContext(uint64_t = 0) : privMux(defaultEspNowMux) {}
+	HardwareContext(const HardwareContext&) = delete;
+	HardwareContext& operator=(const HardwareContext&) = delete;
+};
+#endif
+
 #ifdef CSIM
 // Module encapsulating a private csim context and a private 
 // instance of an espNowMux to simulate esp now traffic between

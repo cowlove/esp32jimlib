@@ -91,10 +91,13 @@ public:
 		privContext.mac = mac;
 		privContext.espnow = &privEspNow;
 		this->context = &privContext;
-        // set private context for derivived class constructors and member constructors. 
-        // The end of the derived-class constructors MUST restore currentContext = &defaultContext,
-        // checked by asserts() throughout esp32csim.cpp
-        currentContext = this->context;    
+		// Delivery by the private transport is device work too: callbacks must
+		// run under this context and must be suppressed while it is asleep.
+		privEspNow.context = &privContext;
+		// Keep the private context selected while derived-class constructors and
+		// member constructors run.  The most-derived constructor restores the
+		// default context after construction is complete.
+		currentContext = this->context;
 	}
 };
 #endif

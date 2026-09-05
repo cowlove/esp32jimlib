@@ -87,9 +87,9 @@ class Csim_privateContext : public ESPNOW_csimOneProg {
 	CsimContext privContext;
 protected:
 	ESPNowMux privMux;
-	CsimCaptureSource capture;
+	CsimWifiBeaconCaptureSource beaconCapture;
 public:
-	Csim_privateContext(uint64_t mac = 0xddeeffddeef0) : capture(&privContext) {
+	Csim_privateContext(uint64_t mac = 0xddeeffddeef0) : beaconCapture(&privContext) {
 		privContext.mac = mac;
 		privContext.espnow = &privEspNow;
 		this->context = &privContext;

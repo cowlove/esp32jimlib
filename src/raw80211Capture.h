@@ -4,11 +4,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Portable view of one promiscuously received 802.11 frame.  data is valid
+// Portable view of one promiscuously received Wi-Fi beacon frame. data is valid
 // only for the duration of the callback; consumers that defer processing must
 // copy it into their own bounded queue.
-struct Raw80211Packet {
-    uint64_t timestampUsec = 0;
+struct WifiBeaconPacket {
+    // Timestamp reported by the ESP32 Wi-Fi receive metadata.
+    uint64_t driverTimestampUsec = 0;
+    // Local monotonic clock sampled immediately inside the receive callback.
+    uint64_t localTimestampUsec = 0;
     int8_t rssi = 0;
     uint8_t channel = 0;
     uint8_t packetType = 0;
@@ -16,31 +19,31 @@ struct Raw80211Packet {
     size_t length = 0;
 };
 
-using Raw80211Callback = void (*)(const Raw80211Packet &, void *);
+using WifiBeaconCallback = void (*)(const WifiBeaconPacket &, void *);
 
 #ifdef CSIM
 
 struct CsimContext;
 
-// Per-device synthetic capture endpoint.  The simulated radio/environment
+// Per-device synthetic beacon capture endpoint. The simulated radio/environment
 // calls inject(); application code uses the same setCallback/start/stop API as
 // it does on hardware.
-class CsimCaptureSource {
+class CsimWifiBeaconCaptureSource {
     CsimContext *context = nullptr;
-    Raw80211Callback callback = nullptr;
+    WifiBeaconCallback callback = nullptr;
     void *callbackArg = nullptr;
     bool running = false;
 public:
-    explicit CsimCaptureSource(CsimContext *owner = nullptr) : context(owner) {}
+    explicit CsimWifiBeaconCaptureSource(CsimContext *owner = nullptr) : context(owner) {}
     void bind(CsimContext *owner) { context = owner; }
-    void setCallback(Raw80211Callback cb, void *arg = nullptr) {
+    void setCallback(WifiBeaconCallback cb, void *arg = nullptr) {
         callback = cb;
         callbackArg = arg;
     }
     void start() { running = true; }
     void stop() { running = false; }
     bool active() const { return running; }
-    void inject(const Raw80211Packet &packet);
+    void inject(const WifiBeaconPacket &packet);
 };
 
 #else
@@ -49,15 +52,15 @@ public:
 
 // The ESP-IDF promiscuous receiver is process/device-global.  There is only
 // one HardwareContext on an ESP32, so this concrete source owns that binding.
-class Esp32CaptureSource {
-    Raw80211Callback callback = nullptr;
+class Esp32WifiBeaconCaptureSource {
+    WifiBeaconCallback callback = nullptr;
     void *callbackArg = nullptr;
     bool running = false;
 
-    static Esp32CaptureSource *activeSource;
+    static Esp32WifiBeaconCaptureSource *activeSource;
     static void receive(void *buffer, wifi_promiscuous_pkt_type_t packetType);
 public:
-    void setCallback(Raw80211Callback cb, void *arg = nullptr) {
+    void setCallback(WifiBeaconCallback cb, void *arg = nullptr) {
         callback = cb;
         callbackArg = arg;
     }

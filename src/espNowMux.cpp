@@ -94,6 +94,10 @@ ESPNowMux::ESPNowMux() {
 }
 void ESPNowMux::onRecv(const uint8_t *mac, const uint8_t *data, int len) {
     lastReceiveUs = micros(); 
+    receiveCallbacks++;
+    uint64_t receivedMac = 0;
+    memcpy(&receivedMac, mac, sizeof(uint8_t) * 6);
+    lastReceiveMac = receivedMac;
     for(auto i = callbacks.begin(); i != callbacks.end(); i++) { 
         int prefixLen = i->prefix.length();
         if (len > prefixLen && memcmp(data, i->prefix.c_str(), i->prefix.length()) == 0) {

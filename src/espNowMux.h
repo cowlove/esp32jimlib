@@ -52,6 +52,8 @@ public:
     uint32_t getSendSuccesses() const { return sendSuccesses; }
     uint32_t getSendFailures() const { return sendFailures; }
     uint32_t getSendBusyDrops() const { return sendBusyDrops; }
+    uint32_t getReceiveCallbacks() const { return receiveCallbacks; }
+    uint64_t getLastReceiveMac() const { return lastReceiveMac; }
     void onRecv(const uint8_t *mac, const uint8_t *data, int len);
     void registerReadCallback(const char *prefix, std::function<void(const uint8_t *mac, const uint8_t *data, int len)> cb);
     void send(const char *prefix, const uint8_t *buf, int n, int tmo = 100);
@@ -68,6 +70,8 @@ private:
     };
     vector<cbInfo> callbacks;
     bool initialized = false;
+    volatile uint32_t receiveCallbacks = 0;
+    volatile uint64_t lastReceiveMac = 0;
 
     esp_now_recv_cb_t recvCbWrapper = NULL;
     esp_now_send_cb_t sendCbWrapper = NULL;

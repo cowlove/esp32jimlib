@@ -20,8 +20,8 @@
 // boundaries.
 class ReliableStreamFraming {
 public:
-  template<size_t Capacity>
-  static bool extract(ReliableStreamByteQueue<Capacity> &wire,
+  template<class Queue>
+  static bool extract(Queue &wire,
       std::string &payload, uint8_t &sequence) {
     payload.clear();
     for (;;) {
@@ -50,7 +50,8 @@ public:
         wire.consume(restart);
         continue;
       }
-      if (frameBytes > Capacity || frameBytes > wire.clearThreshold()) {
+      if (frameBytes > wire.capacity() ||
+          frameBytes > wire.clearThreshold()) {
         discardCandidate(wire);
         continue;
       }
@@ -227,8 +228,8 @@ private:
     else wire.erase(0, restart);
   }
 
-  template<size_t Capacity>
-  static void discardCandidate(ReliableStreamByteQueue<Capacity> &wire) {
+  template<class Queue>
+  static void discardCandidate(Queue &wire) {
     size_t restart = wire.find('~', 1);
     if (restart == wire.size()) wire.clear();
     else wire.consume(restart);

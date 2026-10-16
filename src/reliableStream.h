@@ -37,9 +37,6 @@ protected:
 template<class T>
 class ReliableStream : public ReliableStreamInterface { 
 public:
-  // Fixed storage bounds memory; exceeding the configured threshold clears
-  // queued bytes and drops the input chunk that crossed it.
-  static constexpr size_t byteQueueCapacity = 4096;
   static constexpr size_t defaultClearThreshold = 2048;
 private:
   uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
@@ -51,12 +48,12 @@ private:
   static constexpr uint32_t maxInboundTimeoutMs = 30000;
   uint32_t inboundTimeoutMs = initialInboundTimeoutMs;
   const string HEARTBEAT_pkt = "-1 ACK\n";
-  ReliableStreamByteQueue<byteQueueCapacity> readBuffer;
+  ReliableStreamDynamicByteQueue readBuffer;
 public:
-  ReliableStream() : readBuffer(defaultClearThreshold) {}
+  ReliableStream() : readBuffer(defaultClearThreshold, defaultClearThreshold) {}
   ReliableStream(const char *s, uint16_t p,
       size_t upperClearThreshold = defaultClearThreshold)
-      : readBuffer(upperClearThreshold) { begin(s, p); }
+      : readBuffer(upperClearThreshold, upperClearThreshold) { begin(s, p); }
   void write(const string &s, bool onePacket = false) override {
     return write((const uint8_t *)s.data(), s.length(), onePacket);
   }
@@ -93,6 +90,9 @@ public:
   }
   size_t getReadBufferClearThreshold() const {
     return readBuffer.clearThreshold();
+  }
+  size_t getReadBufferCapacity() const {
+    return readBuffer.capacity();
   }
   uint32_t getReadBufferOverrunCount() const {
     return readBuffer.overrunCount();
@@ -240,12 +240,9 @@ public:
 
 class ESPNowClient {
 public:
-  // Fixed storage bounds memory; exceeding the configured threshold clears
-  // queued bytes and drops the complete callback payload.
-  static constexpr size_t byteQueueCapacity = 4096;
   static constexpr size_t defaultClearThreshold = 2048;
 private:
-  ReliableStreamByteQueue<byteQueueCapacity> buf;
+  ReliableStreamDynamicByteQueue buf;
   SemaphoreHandle_t mutex;
   bool initialized = false;
   uint32_t onePacketMissCount = 0;
@@ -254,7 +251,7 @@ public:
   string prefix;
   ESPNowClient(ESPNowMux *m = &defaultEspNowMux,
       size_t clearThreshold = defaultClearThreshold)
-      : buf(clearThreshold) {
+      : buf(clearThreshold, clearThreshold) {
     enMux = m;
   }
   int read(uint8_t *out, size_t n) {
@@ -276,11 +273,17 @@ public:
     return write(buf, n);
   }
   uint32_t getOnePacketMissCount() const { return onePacketMissCount; }
-  void setClearThreshold(size_t clearThreshold) {
-    buf.setClearThreshold(clearThreshold);
+  bool setClearThreshold(size_t clearThreshold) {
+    return buf.setClearThreshold(clearThreshold);
   }
   size_t getClearThreshold() {
     return buf.clearThreshold();
+  }
+  size_t getQueueCapacity() {
+    return buf.capacity();
+  }
+  bool queueStorageAllocated() {
+    return buf.allocated();
   }
   size_t getQueueHighWaterMark() {
     if (!initialized)
@@ -345,6 +348,9 @@ public:
   }
   uint32_t getTransportQueueOverrunCount() {
     return client.getQueueOverrunCount();
+  }
+  size_t getTransportQueueCapacity() {
+    return client.getQueueCapacity();
   }
   void reconnect() { client.prefix = host; client.connect(); }
 };

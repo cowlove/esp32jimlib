@@ -8,7 +8,8 @@ test: reliable_stream_framing_test
 	./reliable_stream_framing_test
 
 reliable_stream_framing_test: reliable_stream_framing_test.cpp \
-		../src/reliableStreamFraming.h $(CRC_DIR)/Arduino_CRC32.cpp \
+		../src/reliableStreamFraming.h ../src/reliableStreamByteQueue.h \
+		$(CRC_DIR)/Arduino_CRC32.cpp \
 		$(CRC_DIR)/crc.cpp
 	$(CXX) $(CXXFLAGS) -I../src -I$(CRC_DIR) reliable_stream_framing_test.cpp \
 		$(CRC_DIR)/Arduino_CRC32.cpp $(CRC_DIR)/crc.cpp -o $@

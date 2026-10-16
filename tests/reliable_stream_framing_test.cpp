@@ -56,6 +56,15 @@ int main() {
   assert(byteQueue.highWaterMark() == 7);
   assert(byteQueue.overrunCount() == 1);
 
+  ReliableStreamDynamicByteQueue dynamicQueue(8, 8);
+  assert(dynamicQueue.capacity() == 8);
+  assert(dynamicQueue.append(firstBytes, sizeof(firstBytes)));
+  assert(dynamicQueue.setClearThreshold(64 * 1024));
+  assert(dynamicQueue.capacity() == 64 * 1024);
+  assert(dynamicQueue.size() == sizeof(firstBytes));
+  assert(dynamicQueue.read(ordered, sizeof(ordered)) == sizeof(firstBytes));
+  assert(memcmp(ordered, firstBytes, sizeof(firstBytes)) == 0);
+
   // Framing works through a wrapped ring and still emits one frame per call.
   ReliableStreamByteQueue<2048> framedQueue(2048);
   uint8_t filler[2000];
@@ -69,6 +78,17 @@ int main() {
   assert(ReliableStreamFraming::extract(framedQueue, decoded, sequence));
   assert(decoded == "next frame");
   assert(framedQueue.empty());
+
+  ReliableStreamDynamicByteQueue dynamicFramedQueue(64 * 1024, 64 * 1024);
+  wire = encode("large dynamic ring") + encode("following frame");
+  assert(dynamicFramedQueue.append((const uint8_t *)wire.data(), wire.size()));
+  assert(ReliableStreamFraming::extract(
+      dynamicFramedQueue, decoded, sequence));
+  assert(decoded == "large dynamic ring");
+  assert(ReliableStreamFraming::extract(
+      dynamicFramedQueue, decoded, sequence));
+  assert(decoded == "following frame");
+  assert(dynamicFramedQueue.empty());
 
   frame = encode("bad ring crc");
   frame[8] ^= 1;

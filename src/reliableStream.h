@@ -4,6 +4,7 @@
 #include <string>
 #include "Arduino_CRC32.h" 
 #include "reliableStreamFraming.h"
+#include "reliableStreamByteQueue.h"
 using std::string;
 
 class ReliableStreamInterface {
@@ -22,32 +23,25 @@ protected:
 };
 
 
-// Legacy naming note:
+// Historical name: ReliableStream. The design goal is best-effort, one-shot
+// logical-frame delivery: framing and CRC make receive acceptance all-or-
+// nothing, but there are no acknowledgements, retries, or delivery/order
+// guarantees. The modulo-256 sequence is diagnostic only. "Reliable" refers
+// only to resetting/reconnecting an idle channel, not reliable delivery.
 //
-// ReliableStream is not a stream protocol in the application sense. It is a
-// logical-packet framing layer over a byte-oriented transport. The transport
-// may be TCP, UDP, ESP-NOW, or another implementation that coalesces,
-// fragments, or otherwise does not preserve write boundaries. A successful
-// read returns one complete logical packet or nothing; it does not promise
-// delivery, ordering, retransmission, or persistence across transport loss.
-//
-// The legacy class/file name is retained for API compatibility. A more
-// accurate future name would be ReliablePacket. Likewise, the historical
-// "-1 ACK" control payload is not an acknowledgement: it does not confirm
-// application delivery and is deliberately sent outside application framing,
-// so it is never returned to the caller. It is a liveness heartbeat/probe used
-// to exercise the underlying channel.
-//
-// Frames use ~SSLLLL<escaped-payload><CRC32>. SS is a modulo-256 logical frame
-// sequence and LLLL is a fixed four-hex-digit escaped payload length. Only '~'
-// and '%' are percent-escaped. Newlines, NULs and other bytes are unchanged.
-//
-// write(payload, true) is a one-physical-packet performance hint. It never
-// rejects a logical write. Packet transports may count misses when the final
-// encoded frame requires fragmentation; stream transports ignore the hint.
+// Frames use ~SSLLLL<escaped-payload><CRC32>. The historical "-1 ACK" payload
+// is an out-of-band liveness heartbeat, not an application acknowledgement.
+// write(payload, true) is only a one-physical-packet performance hint; it does
+// not reject a logical write. Packet transports can count fragmentation misses.
 
 template<class T>
 class ReliableStream : public ReliableStreamInterface { 
+public:
+  // Fixed storage bounds memory; exceeding the configured threshold clears
+  // queued bytes and drops the input chunk that crossed it.
+  static constexpr size_t byteQueueCapacity = 4096;
+  static constexpr size_t defaultClearThreshold = 2048;
+private:
   uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
   uint32_t clientResetCount = 0;
   uint32_t frameLossCount = 0, sequenceDiscontinuityCount = 0;
@@ -57,10 +51,12 @@ class ReliableStream : public ReliableStreamInterface {
   static constexpr uint32_t maxInboundTimeoutMs = 30000;
   uint32_t inboundTimeoutMs = initialInboundTimeoutMs;
   const string HEARTBEAT_pkt = "-1 ACK\n";
-  string readBuffer;
+  ReliableStreamByteQueue<byteQueueCapacity> readBuffer;
 public:
-  ReliableStream() {}
-  ReliableStream(const char *s, uint16_t p) { begin(s, p); }
+  ReliableStream() : readBuffer(defaultClearThreshold) {}
+  ReliableStream(const char *s, uint16_t p,
+      size_t upperClearThreshold = defaultClearThreshold)
+      : readBuffer(upperClearThreshold) { begin(s, p); }
   void write(const string &s, bool onePacket = false) override {
     return write((const uint8_t *)s.data(), s.length(), onePacket);
   }
@@ -91,7 +87,16 @@ public:
       } 
     }             
   }
-  int available() { return client.available() || readBuffer.length() > 0; }
+  int available() { return client.available() || !readBuffer.empty(); }
+  size_t getReadBufferHighWaterMark() const {
+    return readBuffer.highWaterMark();
+  }
+  size_t getReadBufferClearThreshold() const {
+    return readBuffer.clearThreshold();
+  }
+  uint32_t getReadBufferOverrunCount() const {
+    return readBuffer.overrunCount();
+  }
   string read() { 
     string s;
     read(s);
@@ -127,7 +132,7 @@ public:
         resetClient();
         break;
       }
-      readBuffer.append((const char *)buf, n);
+      readBuffer.append(buf, n);
       lastRecv = millis();
     }
     uint8_t sequence = 0;
@@ -200,7 +205,9 @@ public:
 class ReliableTcpServer : public ReliableStream<WiFiClient> {
 public: 
   ReliableTcpServer() {}
-  ReliableTcpServer(uint16_t p) : ReliableStream("", p) {}
+  ReliableTcpServer(uint16_t p,
+      size_t upperClearThreshold = ReliableStream<WiFiClient>::defaultClearThreshold)
+      : ReliableStream("", p, upperClearThreshold) {}
   WiFiServer server;
   void reconnect() {
     if (!initialized) {
@@ -218,7 +225,9 @@ public:
 
 class ReliableTcpClient : public ReliableStream<WiFiClient> {
 public:
-  ReliableTcpClient(const char *h, uint16_t p) : ReliableStream(h, p) {}
+  ReliableTcpClient(const char *h, uint16_t p,
+      size_t upperClearThreshold = ReliableStream<WiFiClient>::defaultClearThreshold)
+      : ReliableStream(h, p, upperClearThreshold) {}
   void reconnect() {
     if (!client.connected()) {
       client.connect(host.c_str(), port, 10000);
@@ -230,21 +239,29 @@ public:
 };
 
 class ESPNowClient {
-  string buf;  // TODO change to a CBQ
+public:
+  // Fixed storage bounds memory; exceeding the configured threshold clears
+  // queued bytes and drops the complete callback payload.
+  static constexpr size_t byteQueueCapacity = 4096;
+  static constexpr size_t defaultClearThreshold = 2048;
+private:
+  ReliableStreamByteQueue<byteQueueCapacity> buf;
   SemaphoreHandle_t mutex;
   bool initialized = false;
   uint32_t onePacketMissCount = 0;
 public:
   ESPNowMux *enMux;
   string prefix;
-  ESPNowClient(ESPNowMux *m = &defaultEspNowMux)  {
+  ESPNowClient(ESPNowMux *m = &defaultEspNowMux,
+      size_t clearThreshold = defaultClearThreshold)
+      : buf(clearThreshold) {
     enMux = m;
   }
   int read(uint8_t *out, size_t n) {
+    if (!initialized)
+      return 0;
     xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
-    int r = min(n, buf.length());
-    memcpy(out, buf.c_str(), r);
-    buf.erase(0, r);
+    int r = buf.read(out, n);
     xSemaphoreGive(mutex);
     return r;
   }
@@ -259,6 +276,28 @@ public:
     return write(buf, n);
   }
   uint32_t getOnePacketMissCount() const { return onePacketMissCount; }
+  void setClearThreshold(size_t clearThreshold) {
+    buf.setClearThreshold(clearThreshold);
+  }
+  size_t getClearThreshold() {
+    return buf.clearThreshold();
+  }
+  size_t getQueueHighWaterMark() {
+    if (!initialized)
+      return 0;
+    xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
+    size_t highWaterMark = buf.highWaterMark();
+    xSemaphoreGive(mutex);
+    return highWaterMark;
+  }
+  uint32_t getQueueOverrunCount() {
+    if (!initialized)
+      return 0;
+    xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
+    uint32_t overrunCount = buf.overrunCount();
+    xSemaphoreGive(mutex);
+    return overrunCount;
+  }
   bool connected() { return initialized; } 
   void connect() {
     if(!initialized) { 
@@ -269,16 +308,22 @@ public:
       initialized = true;
     }
   }
-  int available() { return buf.length(); }
+  int available() {
+    if (!initialized)
+      return 0;
+    // If the take times out, this still accesses buf without owning the mutex.
+    xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
+    int n = buf.size();
+    xSemaphoreGive(mutex);
+    return n;
+  }
   void flush() {}
   void stop() {  enMux->stop(); }
   void setTimeout(int) {}
   bool writeBusy() { return enMux->writeBusy(); }
   void onRecv(const uint8_t * mac, const uint8_t *in, int len) {
     xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
-    string s;
-    s.assign((const char *)in, len);
-    buf += s;
+    buf.append(in, len);
     //Serial.printf("onRecv() %02x:%02x:%02x:%02x:%02x:%02x %d %d\n", 
     //  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], len, buf.length());
     xSemaphoreGive(mutex);
@@ -288,8 +333,18 @@ public:
 
 class ReliableStreamESPNow : public ReliableStream<ESPNowClient> {
 public: 
-  ReliableStreamESPNow(const char *prefix, bool alwaysBroadcast = false) : ReliableStream(prefix, 0) {
+  ReliableStreamESPNow(const char *prefix, bool alwaysBroadcast = false,
+      size_t lowerClearThreshold = ESPNowClient::defaultClearThreshold,
+      size_t upperClearThreshold = ReliableStream<ESPNowClient>::defaultClearThreshold)
+      : ReliableStream(prefix, 0, upperClearThreshold) {
+    client.setClearThreshold(lowerClearThreshold);
     client.enMux->alwaysBroadcast = alwaysBroadcast;
+  }
+  size_t getTransportQueueHighWaterMark() {
+    return client.getQueueHighWaterMark();
+  }
+  uint32_t getTransportQueueOverrunCount() {
+    return client.getQueueOverrunCount();
   }
   void reconnect() { client.prefix = host; client.connect(); }
 };

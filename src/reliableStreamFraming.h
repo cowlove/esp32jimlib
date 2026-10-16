@@ -6,6 +6,7 @@
 #include <string>
 
 #include "Arduino_CRC32.h"
+#include "reliableStreamByteQueue.h"
 
 // Printable, self-synchronizing logical-packet framing:
 //
@@ -19,6 +20,76 @@
 // boundaries.
 class ReliableStreamFraming {
 public:
+  template<size_t Capacity>
+  static bool extract(ReliableStreamByteQueue<Capacity> &wire,
+      std::string &payload, uint8_t &sequence) {
+    payload.clear();
+    for (;;) {
+      size_t start = wire.find('~');
+      if (start == wire.size()) {
+        wire.clear();
+        return false;
+      }
+      if (start != 0)
+        wire.consume(start);
+      if (wire.size() < 7)
+        return false;
+
+      char header[7];
+      wire.copy(0, (uint8_t *)header, sizeof(header));
+      uint32_t seq = 0, escapedBytes = 0;
+      if (!parseHex(header + 1, 2, seq) ||
+          !parseHex(header + 3, 4, escapedBytes)) {
+        wire.consume(1);
+        continue;
+      }
+
+      const size_t frameBytes = 7 + (size_t)escapedBytes + 8;
+      size_t restart = wire.find('~', 1);
+      if (restart != wire.size() && restart < frameBytes) {
+        wire.consume(restart);
+        continue;
+      }
+      if (frameBytes > Capacity || frameBytes > wire.clearThreshold()) {
+        discardCandidate(wire);
+        continue;
+      }
+      if (wire.size() < frameBytes)
+        return false;
+
+      char trailer[8];
+      wire.copy(7 + escapedBytes, (uint8_t *)trailer, sizeof(trailer));
+      uint32_t expectedCrc = 0;
+      if (!parseHex(trailer, sizeof(trailer), expectedCrc)) {
+        discardCandidate(wire);
+        continue;
+      }
+
+      std::string encoded(escapedBytes, '\0');
+      if (escapedBytes != 0)
+        wire.copy(7, (uint8_t *)&encoded[0], escapedBytes);
+      std::string decoded;
+      if (!decode(encoded.data(), escapedBytes, decoded)) {
+        discardCandidate(wire);
+        continue;
+      }
+
+      uint8_t candidateSequence = (uint8_t)seq;
+      std::string crcInput(1, (char)candidateSequence);
+      crcInput.append(header + 3, 4);
+      crcInput += decoded;
+      Arduino_CRC32 crc32;
+      uint32_t actualCrc = crc32.calc(
+          (const uint8_t *)crcInput.data(), crcInput.size());
+      wire.consume(frameBytes);
+      if (actualCrc != expectedCrc)
+        continue;
+      sequence = candidateSequence;
+      payload.swap(decoded);
+      return true;
+    }
+  }
+
   static std::string encode(const uint8_t *payload, size_t payloadBytes,
       uint8_t sequence) {
     std::string escaped;
@@ -154,6 +225,13 @@ private:
     size_t restart = wire.find('~', 1);
     if (restart == std::string::npos) wire.clear();
     else wire.erase(0, restart);
+  }
+
+  template<size_t Capacity>
+  static void discardCandidate(ReliableStreamByteQueue<Capacity> &wire) {
+    size_t restart = wire.find('~', 1);
+    if (restart == wire.size()) wire.clear();
+    else wire.consume(restart);
   }
 };
 

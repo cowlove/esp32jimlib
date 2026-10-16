@@ -38,6 +38,8 @@ template<class T>
 class ReliableStream : public ReliableStreamInterface { 
 public:
   static constexpr size_t defaultClearThreshold = 2048;
+  int readQueueHighWaterMark = 0;
+  int readQueueClearCount = 0;
 private:
   uint32_t lastSend = 0, lastRecv = 0, lastRecon = 0;
   uint32_t clientResetCount = 0;
@@ -147,6 +149,8 @@ public:
       receiveSequence = sequence;
       haveReceiveSequence = true;
     }
+    readQueueHighWaterMark = (int)readBuffer.highWaterMark();
+    readQueueClearCount = (int)readBuffer.clearCount();
     return s.length(); 
   }
 protected:
@@ -301,6 +305,24 @@ public:
     xSemaphoreGive(mutex);
     return overrunCount;
   }
+  uint32_t getQueueClearCount() {
+    if (!initialized)
+      return 0;
+    xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
+    uint32_t clearCount = buf.clearCount();
+    xSemaphoreGive(mutex);
+    return clearCount;
+  }
+  void getQueueMetrics(size_t &highWaterMark, uint32_t &clearCount) {
+    highWaterMark = 0;
+    clearCount = 0;
+    if (!initialized)
+      return;
+    xSemaphoreTake(mutex, 200 * portTICK_PERIOD_MS);
+    highWaterMark = buf.highWaterMark();
+    clearCount = buf.clearCount();
+    xSemaphoreGive(mutex);
+  }
   bool connected() { return initialized; } 
   void connect() {
     if(!initialized) { 
@@ -336,12 +358,24 @@ public:
 
 class ReliableStreamESPNow : public ReliableStream<ESPNowClient> {
 public: 
+  using ReliableStream<ESPNowClient>::read;
+  int transportQueueHighWaterMark = 0;
+  int transportQueueClearCount = 0;
   ReliableStreamESPNow(const char *prefix, bool alwaysBroadcast = false,
       size_t lowerClearThreshold = ESPNowClient::defaultClearThreshold,
       size_t upperClearThreshold = ReliableStream<ESPNowClient>::defaultClearThreshold)
       : ReliableStream(prefix, 0, upperClearThreshold) {
     client.setClearThreshold(lowerClearThreshold);
     client.enMux->alwaysBroadcast = alwaysBroadcast;
+  }
+  int read(string &s) override {
+    int count = ReliableStream<ESPNowClient>::read(s);
+    size_t highWaterMark;
+    uint32_t clearCount;
+    client.getQueueMetrics(highWaterMark, clearCount);
+    transportQueueHighWaterMark = (int)highWaterMark;
+    transportQueueClearCount = (int)clearCount;
+    return count;
   }
   size_t getTransportQueueHighWaterMark() {
     return client.getQueueHighWaterMark();

@@ -21,12 +21,15 @@ public:
   size_t clearThreshold() const { return clearThreshold_; }
   size_t highWaterMark() const { return highWaterMark_; }
   uint32_t overrunCount() const { return overrunCount_; }
+  uint32_t clearCount() const { return clearCount_; }
   bool empty() const { return size_ == 0; }
 
   void setClearThreshold(size_t clearThreshold) {
     clearThreshold_ = minSize(clearThreshold, Capacity);
-    if (size_ > clearThreshold_)
+    if (size_ > clearThreshold_) {
       clear();
+      clearCount_++;
+    }
   }
 
   bool append(const uint8_t *data, size_t length) {
@@ -36,6 +39,7 @@ public:
         size_ > clearThreshold_ - length) {
       clear();
       overrunCount_++;
+      clearCount_++;
       return false;
     }
 
@@ -108,6 +112,7 @@ private:
   size_t clearThreshold_;
   size_t highWaterMark_ = 0;
   uint32_t overrunCount_ = 0;
+  uint32_t clearCount_ = 0;
 };
 
 class ReliableStreamDynamicByteQueue {
@@ -123,6 +128,7 @@ public:
   size_t clearThreshold() const { return clearThreshold_; }
   size_t highWaterMark() const { return highWaterMark_; }
   uint32_t overrunCount() const { return overrunCount_; }
+  uint32_t clearCount() const { return clearCount_; }
   bool empty() const { return size_ == 0; }
   bool allocated() const { return storage_.get() != NULL; }
 
@@ -134,6 +140,8 @@ public:
       return false;
 
     size_t bytesToKeep = minSize(size_, clearThreshold);
+    if (bytesToKeep < size_)
+      clearCount_++;
     if (bytesToKeep != 0)
       copy(0, newStorage.get(), bytesToKeep);
     storage_ = std::move(newStorage);
@@ -151,8 +159,10 @@ public:
     if (clearThreshold > capacity_)
       return setCapacity(clearThreshold, clearThreshold);
     clearThreshold_ = clearThreshold;
-    if (size_ > clearThreshold_)
+    if (size_ > clearThreshold_) {
       clear();
+      clearCount_++;
+    }
     return true;
   }
 
@@ -163,6 +173,7 @@ public:
         size_ > clearThreshold_ - length) {
       clear();
       overrunCount_++;
+      clearCount_++;
       return false;
     }
 
@@ -237,6 +248,7 @@ private:
   size_t clearThreshold_ = 0;
   size_t highWaterMark_ = 0;
   uint32_t overrunCount_ = 0;
+  uint32_t clearCount_ = 0;
 };
 
 #endif

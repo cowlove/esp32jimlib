@@ -55,6 +55,7 @@ int main() {
   assert(byteQueue.empty());
   assert(byteQueue.highWaterMark() == 7);
   assert(byteQueue.overrunCount() == 1);
+  assert(byteQueue.clearCount() == 1);
 
   ReliableStreamDynamicByteQueue dynamicQueue(8, 8);
   assert(dynamicQueue.capacity() == 8);
@@ -64,6 +65,10 @@ int main() {
   assert(dynamicQueue.size() == sizeof(firstBytes));
   assert(dynamicQueue.read(ordered, sizeof(ordered)) == sizeof(firstBytes));
   assert(memcmp(ordered, firstBytes, sizeof(firstBytes)) == 0);
+  assert(dynamicQueue.setClearThreshold(8));
+  assert(dynamicQueue.append(firstBytes, sizeof(firstBytes)));
+  assert(!dynamicQueue.append(wrappedBytes, sizeof(wrappedBytes)));
+  assert(dynamicQueue.clearCount() == 1);
 
   // Framing works through a wrapped ring and still emits one frame per call.
   ReliableStreamByteQueue<2048> framedQueue(2048);
